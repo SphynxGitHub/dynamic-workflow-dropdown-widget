@@ -53,15 +53,17 @@
     .error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
     .ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
     label.small{font-size:12px;color:#475569}
+
     /* resources */
     details.resource{border:1px solid var(--line);border-radius:10px;padding:8px;margin:8px 0;background:#fff}
     details.resource summary{cursor:pointer;outline:none;font-weight:600}
     .resgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:8px}
-    .resrow{display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center}
+    .resrow{display:grid;grid-template-columns:160px 1fr;gap:8px;align-items:center}
     .resrow label{font-size:12px;color:#475569}
     .reshead{display:flex;align-items:center;gap:8px}
     .res-del{margin-left:auto}
     .mini{font-size:12px;color:#6b7280}
+    .radio-line{display:flex;gap:16px;align-items:center}
   </style>
 </head>
 <body>
@@ -104,15 +106,27 @@
     <!-- Top-level resources -->
     <div class="section">
       <h3>Resources</h3>
-      <div class="hint">Attach forms, email templates, or other docs/links used across the workflow. For large files, prefer links.</div>
+      <div class="hint">Attach forms, email templates, automations, or other docs/links used across the workflow. For large files, prefer links.</div>
+
       <div id="topResources"></div>
+
+      <!-- Builder row -->
       <div class="row" style="margin-top:8px">
         <select id="topResType">
           <option value="form">Form</option>
           <option value="email">Email Template</option>
-          <option value="other">Other Document or Link</option>
+          <option value="automation">Automation</option>
+          <option value="other">Other</option>
         </select>
         <input id="topResName" type="text" placeholder="Resource name (required)" />
+      </div>
+
+      <!-- Conditional builder area -->
+      <div id="topResBuilder" class="section" style="padding:10px;margin-top:8px">
+        <!-- content injected by JS -->
+      </div>
+
+      <div class="row" style="justify-content:flex-end">
         <button id="addTopRes" class="btn">Add Resource</button>
       </div>
     </div>
@@ -135,35 +149,31 @@
   </div>
 
   <script>
-    // Actions (branch outcomes)
+    // Actions
     const ACTIONS = { CLOSE:'close', RESTART_WORKFLOW:'restart_workflow', RESTART_CURRENT:'restart_current', JUMP:'jump' };
 
     // State
-    let steps = []; // [{ name, assigneeType:'team'|'automated', assignee:string, description, resources:[Resource], branches:[{ outcome, action, next|null }] }]
-    let assigneePool = []; // [string,...]
+    let steps = []; // [{ name, assigneeType:'team'|'automated', assignee:string, description, resources:[{resourceId}], branches:[...] }]
+    let assigneePool = [];
     let title = "", startsWhen = "", endsWhen = "", milestones = [];
-    let topResources = []; // [Resource]
-    // Resource shape:
-    // { type:'form'|'email'|'other', name, link, fileName, fileData, email?:{subject,body,to,from,conditions} }
+    let topResources = []; // [{id, type, name, mode?, link?, fileName?, fileData?, email?, automation? }]
 
-    // DOM refs (top-level info)
+    // DOM refs
     const wfTitle = document.getElementById('wfTitle');
     const wfStarts = document.getElementById('wfStarts');
     const wfEnds = document.getElementById('wfEnds');
     const wfMilestones = document.getElementById('wfMilestones');
 
-    // Assignee pool
     const chips = document.getElementById('assigneeChips');
     const assigneeInput = document.getElementById('assigneeInput');
     const addAssigneeBtn = document.getElementById('addAssigneeBtn');
 
-    // Top resources
     const topResList = document.getElementById('topResources');
     const topResType = document.getElementById('topResType');
     const topResName = document.getElementById('topResName');
+    const topResBuilder = document.getElementById('topResBuilder');
     const addTopResBtn = document.getElementById('addTopRes');
 
-    // Steps
     const stepNameInput = document.getElementById('stepNameInput');
     const addStepBtn = document.getElementById('addStepBtn');
     const exportBtn = document.getElementById('exportBtn');
@@ -181,6 +191,7 @@
     const hasName = (n) => steps.some(s=>s.name.toLowerCase()===(n||'').toLowerCase());
     const uniqueName = (base) => { let n=(base||'').trim()||'Untitled Step'; if(!hasName(n))return n; let i=2; while(hasName(`${n} ${i}`)) i++; return `${n} ${i}`; };
     const sanitizeName = (s) => (s||"").trim().replace(/\s+/g,' ');
+    const newId = () => 'r_' + Math.random().toString(36).slice(2,10);
 
     const fileToDataUrl = (file) => new Promise((resolve,reject)=>{
       const fr=new FileReader();
@@ -231,6 +242,8 @@
           if (Array.isArray(obj.milestones)) milestones = obj.milestones;
           else if (obj.milestones) milestones = String(obj.milestones).split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
           topResources = Array.isArray(obj.resources) ? obj.resources : [];
+          // ensure all top resources have ids
+          topResources.forEach(r=>{ if(!r.id) r.id=newId(); });
         }
       } catch(e){}
     };
@@ -253,6 +266,14 @@
             return `Invalid action on step "${s.name}".`;
           if (b.action===ACTIONS.JUMP) {
             if (!b.next || !b.next.trim()) return `On step "${s.name}", outcome "${b.outcome}" must specify a jump target.`;
+          }
+        }
+        // step resources must reference existing top resources
+        if (Array.isArray(s.resources)) {
+          for (const rr of s.resources) {
+            if (!topResources.find(tr=>tr.id===rr.resourceId)) {
+              return `Step "${s.name}" references a resource that no longer exists.`;
+            }
           }
         }
       }
@@ -297,78 +318,171 @@
       if (e.key==='Enter'){ e.preventDefault(); addAssigneeBtn.click(); }
     });
 
-    // Resource editors
+    // ---------- Resource builders ----------
+    function blankResource(type, name){
+      const base = { id:newId(), type, name, mode:null, link:"", fileName:"", fileData:"" };
+      if (type==='email') base.email = { subject:"", body:"", to:"", from:"", conditions:"" };
+      if (type==='automation') base.automation = { system:"", action:"", notes:"" };
+      return base;
+    }
+
     function resourceSummary(r){
       if (!r) return "(empty)";
-      const base = r.name ? `${r.name}` : "(unnamed)";
-      const type = r.type==='email' ? "Email Template"
-                 : r.type==='form' ? "Form"
-                 : "Other";
-      return `${type}: ${base}`;
+      const kind = r.type==='email' ? "Email Template" : r.type==='form' ? "Form" : r.type==='automation' ? "Automation" : "Other";
+      return `${kind}: ${r.name || "(unnamed)"}`;
     }
-    function resourceFields(container, r, onChange){
-      // Build fields depending on type
-      const grid = document.createElement('div'); grid.className = 'resgrid';
 
-      // Common: name
+    function builderForResource(container, r, onChange){
+      container.innerHTML = "";
+      const grid = document.createElement('div'); grid.className='resgrid';
+
+      // Common name
       const rowName = document.createElement('div'); rowName.className='resrow';
       const lblName = document.createElement('label'); lblName.textContent='Name';
-      const inpName = document.createElement('input'); inpName.type='text'; inpName.value=r.name||"";
-      inpName.placeholder='Resource name';
+      const inpName = document.createElement('input'); inpName.type='text'; inpName.value=r.name||""; inpName.placeholder='Resource name';
       inpName.addEventListener('input', ()=>{ r.name = inpName.value; onChange(); });
       rowName.appendChild(lblName); rowName.appendChild(inpName);
       grid.appendChild(rowName);
 
-      if (r.type==='email'){
-        // Email fields
-        const mk = (lab, key, ph='')=>{
-          const row=document.createElement('div'); row.className='resrow';
-          const l=document.createElement('label'); l.textContent=lab;
-          const input=document.createElement(key==='body'?'textarea':'input');
-          if (key!=='body') input.type='text';
-          input.value=(r.email?.[key])||"";
-          input.placeholder=ph;
-          input.addEventListener('input', ()=>{
-            r.email = r.email || {};
-            r.email[key] = input.value;
-            onChange();
-          });
-          row.appendChild(l); row.appendChild(input); grid.appendChild(row);
-        };
-        mk('Subject','subject','Subject line');
-        mk('Body','body','Email body...');
-        mk('To','to','email@example.com');
-        mk('From','from','noreply@example.com');
-        mk('Conditions','conditions','e.g., if client type = VIP');
-      } else {
-        // Link (URL)
-        const rowLink = document.createElement('div'); rowLink.className='resrow';
-        const lblLink = document.createElement('label'); lblLink.textContent='Link';
-        const inpLink = document.createElement('input'); inpLink.type='text'; inpLink.placeholder='https://...';
-        inpLink.value = r.link||"";
-        inpLink.addEventListener('input', ()=>{ r.link = inpLink.value; onChange(); });
-        rowLink.appendChild(lblLink); rowLink.appendChild(inpLink);
-        grid.appendChild(rowLink);
+      // Mode radios by type
+      const rowMode = document.createElement('div'); rowMode.className='resrow';
+      const lblMode = document.createElement('label'); lblMode.textContent='Mode';
+      const modeWrap = document.createElement('div'); modeWrap.className='radio-line';
+
+      function radio(id,label,val){
+        const wrap=document.createElement('label');
+        const rd=document.createElement('input'); rd.type='radio'; rd.name=`mode_${r.id}`; rd.value=val; rd.checked = (r.mode===val);
+        rd.addEventListener('change', ()=>{ r.mode = val; onChange(); renderModeFields(); });
+        const sp=document.createElement('span'); sp.textContent = label; sp.style.marginLeft='6px';
+        wrap.appendChild(rd); wrap.appendChild(sp);
+        return wrap;
       }
 
-      // Optional file upload (any type, encoded to base64)
-      const rowFile = document.createElement('div'); rowFile.className='resrow';
-      const lblFile = document.createElement('label'); lblFile.textContent='Upload File';
-      const inpFile = document.createElement('input'); inpFile.type='file';
-      inpFile.addEventListener('change', async ()=>{
-        const file = inpFile.files?.[0];
-        if (!file) { r.fileName=""; r.fileData=""; onChange(); return; }
-        r.fileName = file.name;
-        try { r.fileData = await fileToDataUrl(file); } catch(e){ r.fileData=""; }
-        onChange();
-      });
-      const mini = document.createElement('div'); mini.className='mini';
-      mini.textContent = r.fileName ? `Attached: ${r.fileName}` : 'No file attached';
-      rowFile.appendChild(lblFile); rowFile.appendChild(inpFile); grid.appendChild(rowFile);
-      grid.appendChild(mini);
+      const modeFields = document.createElement('div'); // will hold conditional inputs
 
+      function renderModeFields(){
+        modeFields.innerHTML = "";
+        if (r.type==='form'){
+          // options: upload | link
+          if (!r.mode) r.mode='upload';
+          if (r.mode==='link'){
+            const rowL = document.createElement('div'); rowL.className='resrow';
+            const l1=document.createElement('label'); l1.textContent='Form Link';
+            const inL=document.createElement('input'); inL.type='text'; inL.placeholder='https://...'; inL.value=r.link||"";
+            inL.addEventListener('input', ()=>{ r.link = inL.value; onChange(); });
+            rowL.appendChild(l1); rowL.appendChild(inL); modeFields.appendChild(rowL);
+          } else {
+            const rowF=document.createElement('div'); rowF.className='resrow';
+            const l2=document.createElement('label'); l2.textContent='Upload PDF';
+            const f=document.createElement('input'); f.type='file'; f.accept=".pdf,.doc,.docx,.png,.jpg,.jpeg";
+            f.addEventListener('change', async ()=>{
+              const file=f.files?.[0]; if(!file){ r.fileName=""; r.fileData=""; onChange(); return; }
+              r.fileName=file.name; r.link=""; r.fileData=await fileToDataUrl(file); onChange();
+            });
+            const mini=document.createElement('div'); mini.className='mini'; mini.textContent = r.fileName?`Attached: ${r.fileName}`:'No file attached';
+            rowF.appendChild(l2); rowF.appendChild(f); modeFields.appendChild(rowF); modeFields.appendChild(mini);
+          }
+        } else if (r.type==='email'){
+          // options: upload | input
+          if (!r.mode) r.mode='input';
+          if (r.mode==='upload'){
+            const rowF=document.createElement('div'); rowF.className='resrow';
+            const l2=document.createElement('label'); l2.textContent='Upload Template';
+            const f=document.createElement('input'); f.type='file'; f.accept=".pdf,.html,.txt,.doc,.docx";
+            f.addEventListener('change', async ()=>{
+              const file=f.files?.[0]; if(!file){ r.fileName=""; r.fileData=""; onChange(); return; }
+              r.fileName=file.name; r.fileData=await fileToDataUrl(file); onChange();
+            });
+            const mini=document.createElement('div'); mini.className='mini'; mini.textContent = r.fileName?`Attached: ${r.fileName}`:'No file attached';
+            rowF.appendChild(l2); rowF.appendChild(f); modeFields.appendChild(rowF); modeFields.appendChild(mini);
+          } else {
+            const mk = (lab, key, ph='')=>{
+              const row=document.createElement('div'); row.className='resrow';
+              const l=document.createElement('label'); l.textContent=lab;
+              const input=document.createElement(key==='body'?'textarea':'input');
+              if (key!=='body') input.type='text';
+              input.value=(r.email?.[key])||"";
+              input.placeholder=ph;
+              input.addEventListener('input', ()=>{
+                r.email = r.email || {};
+                r.email[key] = input.value;
+                onChange();
+              });
+              row.appendChild(l); row.appendChild(input); modeFields.appendChild(row);
+            };
+            mk('Subject','subject','Subject line');
+            mk('Body','body','Email body...');
+            mk('To','to','email@example.com');
+            mk('From','from','noreply@example.com');
+            mk('Conditions','conditions','e.g., if client type = VIP');
+          }
+        } else if (r.type==='other'){
+          // options: upload | link
+          if (!r.mode) r.mode='link';
+          if (r.mode==='link'){
+            const rowL=document.createElement('div'); rowL.className='resrow';
+            const l1=document.createElement('label'); l1.textContent='Link';
+            const inL=document.createElement('input'); inL.type='text'; inL.placeholder='https://...'; inL.value=r.link||"";
+            inL.addEventListener('input', ()=>{ r.link = inL.value; onChange(); });
+            rowL.appendChild(l1); rowL.appendChild(inL); modeFields.appendChild(rowL);
+          } else {
+            const rowF=document.createElement('div'); rowF.className='resrow';
+            const l2=document.createElement('label'); l2.textContent='Upload File';
+            const f=document.createElement('input'); f.type='file';
+            f.addEventListener('change', async ()=>{
+              const file=f.files?.[0]; if(!file){ r.fileName=""; r.fileData=""; onChange(); return; }
+              r.fileName=file.name; r.link=""; r.fileData=await fileToDataUrl(file); onChange();
+            });
+            const mini=document.createElement('div'); mini.className='mini'; mini.textContent = r.fileName?`Attached: ${r.fileName}`:'No file attached';
+            rowF.appendChild(l2); rowF.appendChild(f); modeFields.appendChild(rowF); modeFields.appendChild(mini);
+          }
+        } else if (r.type==='automation'){
+          // inputs: system, action, notes
+          const mk = (lab, key, ph='')=>{
+            const row=document.createElement('div'); row.className='resrow';
+            const l=document.createElement('label'); l.textContent=lab;
+            const input=document.createElement(key==='notes'?'textarea':'input');
+            if (key!=='notes') input.type='text';
+            input.value=(r.automation?.[key])||"";
+            input.placeholder=ph;
+            input.addEventListener('input', ()=>{
+              r.automation = r.automation || {};
+              r.automation[key] = input.value;
+              onChange();
+            });
+            row.appendChild(l); row.appendChild(input); modeFields.appendChild(row);
+          };
+          mk('System','system','e.g., Zapier / Make / Salesforce Flow');
+          mk('Action','action','e.g., Create Task, Update Record');
+          mk('Notes','notes','Parameters, conditions, etc.');
+        }
+      }
+
+      // inject radios per type
+      if (r.type==='form'){
+        modeWrap.appendChild(radio('m1','Upload file','upload'));
+        modeWrap.appendChild(radio('m2','Link to form','link'));
+      } else if (r.type==='email'){
+        modeWrap.appendChild(radio('m3','Upload email template','upload'));
+        modeWrap.appendChild(radio('m4','Input email template','input'));
+      } else if (r.type==='other'){
+        modeWrap.appendChild(radio('m5','Upload file','upload'));
+        modeWrap.appendChild(radio('m6','Link','link'));
+      } else if (r.type==='automation'){
+        // no radios; always input fields
+      }
+
+      if (r.type!=='automation'){
+        rowMode.appendChild(lblMode); rowMode.appendChild(modeWrap);
+        grid.appendChild(rowMode);
+      }
+
+      // container for conditional fields
+      grid.appendChild(modeFields);
       container.appendChild(grid);
+      renderModeFields();
     }
+
     function renderResourceList(listEl, arr, onChange){
       listEl.innerHTML = "";
       if (!arr.length){
@@ -385,35 +499,264 @@
         det.appendChild(sum);
 
         const inner = document.createElement('div');
-        resourceFields(inner, r, onChange);
+        builderForResource(inner, r, onChange);
         det.appendChild(inner);
 
         listEl.appendChild(det);
       });
     }
 
-    // Top resources UI
-    function renderTopResources(){
-      renderResourceList(topResList, topResources, persist);
+    function renderTopResources(){ renderResourceList(topResList, topResources, persist); }
+
+    // Build the conditional builder UI for top resource creation
+    function renderTopBuilder(){
+      const type = topResType.value;
+      const name = sanitizeName(topResName.value);
+      topResBuilder.innerHTML = "";
+      const temp = blankResource(type, name || "");
+
+      builderForResource(topResBuilder, temp, ()=>{ /* live preview only */ });
+      // store temp object on builder for reuse when clicking "Add"
+      topResBuilder._tempResource = temp;
     }
+
+    topResType.addEventListener('change', renderTopBuilder);
+    topResName.addEventListener('input', renderTopBuilder);
+
     addTopResBtn.addEventListener('click', ()=>{
       const t = topResType.value;
       const n = sanitizeName(topResName.value);
       if (!n){ showErr("Resource name is required."); return; }
-      const base = { type:t, name:n, link:"", fileName:"", fileData:"" };
-      if (t==='email') base.email = { subject:"", body:"", to:"", from:"", conditions:"" };
-      topResources.push(base);
+      const r = topResBuilder._tempResource || blankResource(t, n);
+      r.name = n; // ensure latest
+      if (!r.id) r.id = newId();
+      topResources.push(r);
       topResName.value = "";
+      renderTopBuilder();
       persist();
     });
 
-    // Render cards/steps
+    // Step resources picker + custom flow
+    function renderStepResourcePicker(container, step){
+      container.innerHTML = "";
+
+      const header = document.createElement('div'); header.className='row';
+      const sel = document.createElement('select');
+      sel.innerHTML = `<option value="">Select existing resource…</option>` +
+        topResources.map(r => `<option value="${r.id}">${resourceSummary(r)}</option>`).join('') +
+        `<option value="__custom__">Custom…</option>`;
+      const addBtn = document.createElement('button'); addBtn.className='btn'; addBtn.textContent='Add to Step';
+
+      header.appendChild(sel); header.appendChild(addBtn);
+      container.appendChild(header);
+
+      const customWrap = document.createElement('div'); customWrap.className='section'; customWrap.style.display='none';
+      container.appendChild(customWrap);
+
+      let customTemp = blankResource('form',''); // default; will rebuild on type change
+
+      function showCustomBuilder(){
+        customWrap.style.display='';
+        buildCustomUI();
+      }
+
+      function hideCustomBuilder(){
+        customWrap.style.display='none';
+        customWrap.innerHTML = "";
+      }
+
+      function buildCustomUI(){
+        customWrap.innerHTML = '';
+
+        // type + name
+        const row = document.createElement('div'); row.className='row';
+        const typeSel = document.createElement('select');
+        ['form','email','automation','other'].forEach(t=>{
+          const o=document.createElement('option'); o.value=t; o.textContent=t==='email'?'Email Template':t==='form'?'Form':t==='automation'?'Automation':'Other';
+          typeSel.appendChild(o);
+        });
+        const nameIn = document.createElement('input'); nameIn.type='text'; nameIn.placeholder='Resource name (required)';
+
+        // initialize
+        customTemp = blankResource('form','');
+        typeSel.value = customTemp.type;
+        nameIn.value = customTemp.name;
+
+        typeSel.addEventListener('change', ()=>{ customTemp = blankResource(typeSel.value, sanitizeName(nameIn.value)); renderFields(); });
+        nameIn.addEventListener('input', ()=>{ customTemp.name = sanitizeName(nameIn.value); });
+
+        row.appendChild(typeSel); row.appendChild(nameIn);
+        customWrap.appendChild(row);
+
+        const fields = document.createElement('div');
+        customWrap.appendChild(fields);
+
+        function onChange(){ /* no-op live */ }
+
+        function renderFields(){
+          fields.innerHTML = '';
+          builderForResource(fields, customTemp, onChange);
+        }
+
+        renderFields();
+
+        // actions
+        const actions = document.createElement('div'); actions.className='row'; actions.style.justifyContent='flex-end';
+        const saveBtn = document.createElement('button'); saveBtn.className='btn primary'; saveBtn.textContent='Save Resource & Add';
+        const cancelBtn = document.createElement('button'); cancelBtn.className='btn'; cancelBtn.textContent='Cancel';
+
+        saveBtn.addEventListener('click', ()=>{
+          const nm = sanitizeName(customTemp.name);
+          if (!nm){ showErr("Resource name is required."); return; }
+          if (!customTemp.id) customTemp.id = newId();
+          // push to top pool
+          topResources.push(customTemp);
+          // link to step
+          step.resources = step.resources || [];
+          step.resources.push({ resourceId: customTemp.id });
+          persist();
+          hideCustomBuilder();
+          // refresh dropdown to include the new one
+          renderStepResourceList(container, step);
+        });
+        cancelBtn.addEventListener('click', ()=>{ hideCustomBuilder(); sel.value=""; });
+
+        actions.appendChild(cancelBtn); actions.appendChild(saveBtn);
+        customWrap.appendChild(actions);
+      }
+
+      sel.addEventListener('change', ()=>{
+        if (sel.value === '__custom__'){
+          showCustomBuilder();
+        } else {
+          hideCustomBuilder();
+        }
+      });
+
+      addBtn.addEventListener('click', ()=>{
+        const val = sel.value;
+        if (!val){ showErr("Choose a resource or select Custom."); return; }
+        if (val === '__custom__'){ showCustomBuilder(); return; }
+        // link existing
+        step.resources = step.resources || [];
+        if (!step.resources.find(x=>x.resourceId===val)){
+          step.resources.push({ resourceId: val });
+          persist();
+          renderStepResourceList(container, step);
+        }
+      });
+
+      // also render the current list below
+      renderStepResourceList(container, step);
+    }
+
+    function renderStepResourceList(container, step){
+      let list = container.querySelector('.step-res-list');
+      if (!list){
+        list = document.createElement('div'); list.className='step-res-list';
+        container.appendChild(list);
+      }
+      list.innerHTML = "";
+      const arr = step.resources || [];
+      if (!arr.length){
+        const empty = document.createElement('div'); empty.className='mini'; empty.textContent='No step resources yet.';
+        list.appendChild(empty); return;
+      }
+      arr.forEach((ref, i)=>{
+        const r = topResources.find(tr=>tr.id===ref.resourceId);
+        const det = document.createElement('details'); det.className='resource';
+        const sum = document.createElement('summary'); sum.className='reshead';
+        const title = document.createElement('span'); title.textContent = r ? resourceSummary(r) : '(missing resource)';
+        const del = document.createElement('button'); del.className='btn res-del'; del.textContent='Remove';
+        del.addEventListener('click', (e)=>{ e.preventDefault(); step.resources.splice(i,1); persist(); });
+        sum.appendChild(title); sum.appendChild(del);
+        det.appendChild(sum);
+
+        if (r){
+          const inner = document.createElement('div');
+          // show read-only snapshot
+          const grid = document.createElement('div'); grid.className='resgrid';
+          const row1 = document.createElement('div'); row1.className='resrow';
+          const l1 = document.createElement('label'); l1.textContent='Type'; const v1=document.createElement('div'); v1.className='mini';
+          v1.textContent = r.type;
+          row1.appendChild(l1); row1.appendChild(v1); grid.appendChild(row1);
+
+          const row2 = document.createElement('div'); row2.className='resrow';
+          const l2 = document.createElement('label'); l2.textContent='Name'; const v2=document.createElement('div'); v2.className='mini';
+          v2.textContent = r.name; row2.appendChild(l2); row2.appendChild(v2); grid.appendChild(row2);
+
+          if (r.type==='form' || r.type==='other'){
+            const rowM=document.createElement('div'); rowM.className='resrow';
+            const lm=document.createElement('label'); lm.textContent='Mode';
+            const vm=document.createElement('div'); vm.className='mini'; vm.textContent = r.mode || '';
+            rowM.appendChild(lm); rowM.appendChild(vm); grid.appendChild(rowM);
+
+            if (r.mode==='link' && r.link){
+              const rowL=document.createElement('div'); rowL.className='resrow';
+              const ll=document.createElement('label'); ll.textContent='Link';
+              const vl=document.createElement('a'); vl.className='mini'; vl.href=r.link; vl.target='_blank'; vl.textContent=r.link;
+              rowL.appendChild(ll); rowL.appendChild(vl); grid.appendChild(rowL);
+            }
+            if (r.mode==='upload' && r.fileName){
+              const rowF=document.createElement('div'); rowF.className='resrow';
+              const lf=document.createElement('label'); lf.textContent='File';
+              const vf=document.createElement('div'); vf.className='mini'; vf.textContent=r.fileName;
+              rowF.appendChild(lf); rowF.appendChild(vf); grid.appendChild(rowF);
+            }
+          }
+          if (r.type==='email'){
+            const rowM=document.createElement('div'); rowM.className='resrow';
+            const lm=document.createElement('label'); lm.textContent='Mode';
+            const vm=document.createElement('div'); vm.className='mini'; vm.textContent = r.mode || '';
+            rowM.appendChild(lm); rowM.appendChild(vm); grid.appendChild(rowM);
+
+            if (r.mode==='upload' && r.fileName){
+              const rowF=document.createElement('div'); rowF.className='resrow';
+              const lf=document.createElement('label'); lf.textContent='File';
+              const vf=document.createElement('div'); vf.className='mini'; vf.textContent=r.fileName;
+              rowF.appendChild(lf); rowF.appendChild(vf); grid.appendChild(rowF);
+            }
+            if (r.mode==='input' && r.email){
+              const fields = ['subject','to','from','conditions'];
+              fields.forEach(k=>{
+                const row=document.createElement('div'); row.className='resrow';
+                const l=document.createElement('label'); l.textContent=k[0].toUpperCase()+k.slice(1);
+                const v=document.createElement('div'); v.className='mini'; v.textContent = r.email?.[k] || '';
+                row.appendChild(l); row.appendChild(v); grid.appendChild(row);
+              });
+              // body as a long block
+              const rowB=document.createElement('div'); rowB.className='resrow';
+              const lb=document.createElement('label'); lb.textContent='Body';
+              const vb=document.createElement('div'); vb.className='mini'; vb.textContent = r.email.body || '';
+              rowB.appendChild(lb); rowB.appendChild(vb); grid.appendChild(rowB);
+            }
+          }
+          if (r.type==='automation' && r.automation){
+            const fields = ['system','action','notes'];
+            fields.forEach(k=>{
+              const row=document.createElement('div'); row.className='resrow';
+              const l=document.createElement('label'); l.textContent=k[0].toUpperCase()+k.slice(1);
+              const v=document.createElement('div'); v.className='mini'; v.textContent = r.automation?.[k] || '';
+              row.appendChild(l); row.appendChild(v); grid.appendChild(row);
+            });
+          }
+
+          inner.appendChild(grid);
+          det.appendChild(inner);
+        }
+
+        list.appendChild(det);
+      });
+    }
+
+    // ---------- Render whole UI ----------
     function render(){
       // top-level reflect state
       wfTitle.value = title; wfStarts.value = startsWhen; wfEnds.value = endsWhen;
       wfMilestones.value = (milestones||[]).join('\n');
       renderAssignees();
       renderTopResources();
+      renderTopBuilder();
 
       if (!steps.length){ cards.innerHTML=""; emptyState.style.display=""; return; }
       emptyState.style.display="none"; cards.innerHTML="";
@@ -493,32 +836,14 @@
         descTa.value = step.description || "";
         descTa.addEventListener('input', ()=>{ step.description = descTa.value; persist(); });
 
-        // Step resources (collapsible list)
+        // Step resources (picker + list)
         const resHdr = document.createElement('div'); resHdr.className='tag'; resHdr.textContent='Resources';
-        const stepResList = document.createElement('div');
+        const resPicker = document.createElement('div');
         if (!Array.isArray(step.resources)) step.resources = [];
-        const addStepResWrap = document.createElement('div'); addStepResWrap.className='row';
-        const stepResType = document.createElement('select');
-        ['form','email','other'].forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=(t==='email'?'Email Template':t==='form'?'Form':'Other Document or Link'); stepResType.appendChild(o); });
-        const stepResName = document.createElement('input'); stepResName.type='text'; stepResName.placeholder='Resource name (required)';
-        const addStepResBtn = document.createElement('button'); addStepResBtn.className='btn'; addStepResBtn.textContent='Add Resource';
-        addStepResBtn.addEventListener('click', ()=>{
-          const t = stepResType.value;
-          const n = sanitizeName(stepResName.value);
-          if (!n){ showErr("Resource name is required."); return; }
-          const base = { type:t, name:n, link:"", fileName:"", fileData:"" };
-          if (t==='email') base.email = { subject:"", body:"", to:"", from:"", conditions:"" };
-          step.resources.push(base);
-          stepResName.value = "";
-          persist();
-        });
-        addStepResWrap.appendChild(stepResType);
-        addStepResWrap.appendChild(stepResName);
-        addStepResWrap.appendChild(addStepResBtn);
+        renderStepResourcePicker(resPicker, step);
 
         // outcomes
         const rowsWrap = document.createElement('div');
-
         step.branches.forEach((branch, bIdx)=>{
           const row = document.createElement('div'); row.className='row';
 
@@ -529,7 +854,6 @@
 
           const thenLbl = document.createElement('label'); thenLbl.className='small'; thenLbl.textContent='Then:';
 
-          // action select
           const actionSelect = document.createElement('select');
           [
             {v:'close', label:'Close Workflow'},
@@ -590,18 +914,12 @@
         card.appendChild(header);
 
         const metaWrap = document.createElement('div'); metaWrap.className='meta';
-        // Assignee rows
         metaWrap.appendChild(atRow);
         metaWrap.appendChild(anRow);
-        // Description
         metaWrap.appendChild(descLbl);
         metaWrap.appendChild(descTa);
-        // Step resources
         metaWrap.appendChild(resHdr);
-        const stepResContainer = document.createElement('div');
-        renderResourceList(stepResContainer, step.resources, persist);
-        metaWrap.appendChild(stepResContainer);
-        metaWrap.appendChild(addStepResWrap);
+        metaWrap.appendChild(resPicker);
 
         card.appendChild(metaWrap);
 
@@ -679,6 +997,9 @@
       }
       JFCustomWidget.sendSubmit({ valid:true, value });
     });
+
+    // Initial builder render
+    renderTopBuilder();
   </script>
 </body>
 </html>
