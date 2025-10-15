@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Dynamic Workflow Dropdown</title>
+    <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 8px;
+      }
+      select {
+        width: 100%;
+        padding: 6px;
+        font-size: 14px;
+      }
+      .note {
+        font-size: 12px;
+        color: #666;
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <label for="nextStep">Select Next Step:</label>
+    <select id="nextStep">
+      <option value="">Loading...</option>
+    </select>
+    <div class="note">
+      Options update as you type other step names in this form.
+    </div>
+    <script>
+      (function () {
+        const select = document.getElementById("nextStep");
+        let currentFields = {};
+        let currentStepLabel = "";
+
+        // Wait for Jotform to initialize
+        JFCustomWidget.subscribe("ready", function (formData) {
+          currentFields = formData.fields || {};
+          currentStepLabel = JFCustomWidget.getWidgetSetting("CurrentStepLabel") || "";
+          populateDropdown(currentFields);
+
+          JFCustomWidget.subscribe("fieldChange", function (update) {
+            currentFields = update.fields;
+            populateDropdown(currentFields);
+          });
+        });
+
+        function populateDropdown(fields) {
+          const stepNames = [];
+          Object.values(fields).forEach((f) => {
+            const label = f.label || "";
+            const val = f.value || "";
+            if (/step/i.test(label) && val.trim()) stepNames.push(val.trim());
+          });
+
+          select.innerHTML =
+            `<option value="">Select a step...</option>` +
+            stepNames
+              .filter((name) => name.toLowerCase() !== currentStepLabel.toLowerCase())
+              .map((s) => `<option value="${s}">${s}</option>`)
+              .join("") +
+            `<option value="End of Workflow">End of Workflow</option>`;
+        }
+
+        select.addEventListener("change", () => {
+          JFCustomWidget.sendData({ value: select.value });
+        });
+
+        JFCustomWidget.subscribe("submit", () => {
+          JFCustomWidget.sendSubmit({
+            valid: true,
+            value: select.value,
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
