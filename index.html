@@ -4,7 +4,6 @@
   <meta charset="utf-8" />
   <title>Branching Workflow Builder</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Jotform Widget SDK -->
   <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
   <style>
     :root{
@@ -19,21 +18,30 @@
     .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
     .btn.ghost{background:var(--accent-ghost);color:#274c9f;border-color:#cfe0ff}
     .btn.danger{background:#fff;color:var(--danger);border-color:#ffd1dc}
-    .hint{font-size:12px;color:var(--muted);margin-top:2px}
     .toggle{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;color:#334155}
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:0 1px 0 rgba(0,0,0,.02)}
+    .hint{font-size:12px;color:var(--muted);margin-top:2px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:0 1px 0 rgba(0,0,0,.02);position:relative}
     .card header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
     .card header input{flex:1 1 auto;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-weight:600;background:#fff}
+    .iconbtn{border:none;background:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+    .iconbtn.red{width:34px;height:34px;border-radius:50%;background:var(--danger);color:#fff}
+    .iconbtn.red svg{width:18px;height:18px}
+    .meta{display:grid;grid-template-columns:1fr;gap:8px;margin:6px 0 10px}
+    .meta .rowline{display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center}
+    .meta input[type="text"], .meta textarea{
+      width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit
+    }
+    .meta textarea{min-height:72px;resize:vertical}
     .tag{font-size:12px;color:var(--muted)}
-    .row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
-    .row input[type="text"], .row select, .row input[list]{flex:1 1 40%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
+    .row{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
+    .row input[type="text"], .row select, .row input[list]{flex:1 1 40%;min-width:160px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
     .row .btn{padding:8px 10px}
     .divider{height:1px;background:var(--line);margin:10px 0}
     .footer{display:flex;gap:8px;justify-content:flex-end}
     .empty{border:1px dashed var(--line);border-radius:var(--radius);padding:16px;text-align:center;color:var(--muted);background:#fff}
     .mapline{font-size:12px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-top:6px;white-space:pre-wrap}
-    .error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px;border-radius:10px;font-size:13px;margin:8px 0}
+    .error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
     .ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
     label.small{font-size:12px;color:#475569}
   </style>
@@ -50,27 +58,21 @@
         Allow linking to future steps
       </label>
     </div>
-    <div class="hint">Tip: Each step can branch by outcome. Choose a parent action: <b>Close Workflow</b>, <b>Restart Workflow</b>, <b>Restart Current Step</b>, or <b>Jump to Step</b> (then pick a step).</div>
+    <div class="hint">Each step can branch by outcome. Choose: <b>Close Workflow</b>, <b>Restart Workflow</b>, <b>Restart Current Step</b>, or <b>Jump to Step</b> (then pick a step).</div>
 
     <div id="statusOk" class="ok">Saved.</div>
-    <div id="statusErr" class="error" style="display:none;"></div>
+    <div id="statusErr" class="error"></div>
 
     <div id="cards" class="grid" aria-live="polite"></div>
     <div id="emptyState" class="empty" style="display:none;">No steps yet. Add your first step above.</div>
   </div>
 
   <script>
-    // ---- Model ----
-    // steps: [{ name, branches: [{ outcome, action:'close'|'restart_workflow'|'restart_current'|'jump', next: null|string }] }]
-    let steps = [];
-    const ACTIONS = {
-      CLOSE: 'close',
-      RESTART_WORKFLOW: 'restart_workflow',
-      RESTART_CURRENT: 'restart_current',
-      JUMP: 'jump'
-    };
+    // actions
+    const ACTIONS = { CLOSE:'close', RESTART_WORKFLOW:'restart_workflow', RESTART_CURRENT:'restart_current', JUMP:'jump' };
 
-    // ---- DOM refs ----
+    // state
+    let steps = []; // [{ name, assignee, description, branches:[{ outcome, action, next|null }] }]
     const stepNameInput = document.getElementById('stepNameInput');
     const addStepBtn = document.getElementById('addStepBtn');
     const exportBtn = document.getElementById('exportBtn');
@@ -81,161 +83,146 @@
     const statusOk = document.getElementById('statusOk');
     const statusErr = document.getElementById('statusErr');
 
-    // ---- Utilities ----
+    // utils
     const debounce = (fn, ms=2000) => { let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),ms); }; };
     const showOk = () => { statusOk.style.display='block'; setTimeout(()=>statusOk.style.display='none', 900); };
     const showErr = (msg) => { statusErr.textContent = msg; statusErr.style.display='block'; setTimeout(()=>statusErr.style.display='none', 3000); };
-
     const allStepNames = () => steps.map(s=>s.name);
-    const hasName = (n) => steps.some(s=>s.name.toLowerCase() === (n||'').toLowerCase());
-    const uniqueName = (base) => {
-      let n = (base||'').trim() || 'Untitled Step';
-      if (!hasName(n)) return n;
-      let i = 2;
-      while (hasName(`${n} ${i}`)) i++;
-      return `${n} ${i}`;
-    };
+    const hasName = (n) => steps.some(s=>s.name.toLowerCase()===(n||'').toLowerCase());
+    const uniqueName = (base) => { let n=(base||'').trim()||'Untitled Step'; if(!hasName(n))return n; let i=2; while(hasName(`${n} ${i}`)) i++; return `${n} ${i}`; };
 
     const renameStepGlobally = (oldName, newName) => {
-      steps.forEach(s => s.branches.forEach(b => {
-        if (b.action === ACTIONS.JUMP && b.next === oldName) b.next = newName;
+      steps.forEach(s=>s.branches.forEach(b=>{
+        if (b.action===ACTIONS.JUMP && b.next===oldName) b.next = newName;
       }));
     };
-
     const deleteStepGlobally = (name) => {
-      steps = steps.filter(s => s.name !== name);
-      steps.forEach(s => s.branches.forEach(b => {
-        if (b.action === ACTIONS.JUMP && b.next === name) {
-          b.action = ACTIONS.CLOSE; b.next = null; // fallback to Close Workflow
-        }
+      steps = steps.filter(s=>s.name!==name);
+      steps.forEach(s=>s.branches.forEach(b=>{
+        if (b.action===ACTIONS.JUMP && b.next===name){ b.action=ACTIONS.CLOSE; b.next=null; }
       }));
     };
-
-    // Options for Jump-to-Select
     const jumpTargets = (selfName) => allStepNames().filter(n => n.toLowerCase() !== (selfName||'').toLowerCase());
 
-    // ---- Persistence to Jotform (debounced) ----
+    // persistence
     const persist = debounce(() => {
       try {
         JFCustomWidget.sendData({ value: JSON.stringify({ steps, allowFuture: !!allowFuture.checked }) });
         showOk();
-      } catch(e) {/* ignore if outside JF */}
-      render(); // keep UI synced
+      } catch(e) {}
+      render();
     }, 2000);
 
     const loadFromValue = (v) => {
       if (!v) return;
       try {
         const obj = JSON.parse(v);
-        if (Array.isArray(obj)) { steps = obj; } // backward compat (older saves)
+        if (Array.isArray(obj)) { steps = obj; } // legacy
         else if (obj && Array.isArray(obj.steps)) {
           steps = obj.steps;
           allowFuture.checked = !!obj.allowFuture;
         }
-      } catch(e){ /* ignore */ }
+      } catch(e){}
     };
 
-    // ---- Validation ----
+    // validation
     function validateAll() {
       const names = allStepNames();
-      if (names.length === 0) return "Add at least one step.";
-      // Unique non-empty names
-      for (const n of names) {
-        if (!n.trim()) return "Step names cannot be empty.";
-      }
+      if (!names.length) return "Add at least one step.";
+      for (const n of names) if (!n.trim()) return "Step names cannot be empty.";
       const lower = names.map(n=>n.toLowerCase());
-      const dup = lower.find((n,i)=> lower.indexOf(n) !== i);
+      const dup = lower.find((n,i)=> lower.indexOf(n)!==i);
       if (dup) return "Step names must be unique.";
-
-      // Branches complete
       for (const s of steps) {
         for (const b of s.branches) {
           if (!b.outcome || !b.outcome.trim()) return `Outcome label missing on step "${s.name}".`;
-          if (![ACTIONS.CLOSE, ACTIONS.RESTART_CURRENT, ACTIONS.RESTART_WORKFLOW, ACTIONS.JUMP].includes(b.action))
+          if (![ACTIONS.CLOSE,ACTIONS.RESTART_WORKFLOW,ACTIONS.RESTART_CURRENT,ACTIONS.JUMP].includes(b.action))
             return `Invalid action on step "${s.name}".`;
-
-          if (b.action === ACTIONS.JUMP) {
+          if (b.action===ACTIONS.JUMP) {
             if (!allowFuture.checked) {
-              const targets = jumpTargets(s.name);
-              if (!b.next || !targets.includes(b.next)) {
-                return `On step "${s.name}", outcome "${b.outcome}" must jump to an existing step (not itself).`;
-              }
+              const options = jumpTargets(s.name);
+              if (!b.next || !options.includes(b.next)) return `On step "${s.name}", outcome "${b.outcome}" must jump to an existing step (not itself).`;
             } else {
               if (!b.next || !b.next.trim()) return `On step "${s.name}", outcome "${b.outcome}" must specify a jump target.`;
             }
           }
         }
       }
-      return ""; // ok
+      return "";
     }
 
-    // ---- UI renderers ----
+    // render
     function render(){
-      // Empty state
-      if (steps.length === 0){
-        cards.innerHTML = "";
-        emptyState.style.display = "";
-        return;
-      }
-      emptyState.style.display = "none";
-      cards.innerHTML = "";
+      if (!steps.length){ cards.innerHTML=""; emptyState.style.display=""; return; }
+      emptyState.style.display="none"; cards.innerHTML="";
 
       steps.forEach((step, idx)=>{
-        const card = document.createElement('div');
-        card.className = 'card';
+        const card = document.createElement('div'); card.className='card';
 
-        // Header: editable name + delete
+        // header with name + red trash icon
         const header = document.createElement('header');
         const titleInput = document.createElement('input');
-        titleInput.value = step.name;
-        titleInput.placeholder = "Step name";
+        titleInput.value = step.name; titleInput.placeholder="Step name";
         titleInput.addEventListener('change', ()=>{
           const next = uniqueName(titleInput.value);
-          if (next !== step.name) {
-            const old = step.name;
-            step.name = next;
-            renameStepGlobally(old, next);
-            persist();
-          } else {
-            step.name = next; // normalize
-            persist();
-          }
+          if (next !== step.name){ const old=step.name; step.name=next; renameStepGlobally(old,next); persist(); }
+          else { step.name=next; persist(); }
         });
 
         const delBtn = document.createElement('button');
-        delBtn.className = 'btn danger';
-        delBtn.textContent = 'Delete Step';
+        delBtn.className = 'iconbtn red'; delBtn.setAttribute('aria-label','Delete Step'); delBtn.title = 'Delete Step';
+        delBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+            <path d="M10 11v6"></path>
+            <path d="M14 11v6"></path>
+            <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>
+          </svg>`;
         delBtn.addEventListener('click', ()=>{
           if (confirm(`Delete "${step.name}"? Any branches pointing here will switch to Close Workflow.`)){
-            deleteStepGlobally(step.name);
-            persist();
+            deleteStepGlobally(step.name); persist();
           }
         });
 
         header.appendChild(titleInput);
         header.appendChild(delBtn);
 
-        const tag = document.createElement('div');
-        tag.className = 'tag';
-        tag.textContent = `Step ${idx+1}`;
+        // meta: assignee + description
+        const meta = document.createElement('div'); meta.className='meta';
+        const assRow = document.createElement('div'); assRow.className='rowline';
+        const assLbl = document.createElement('label'); assLbl.textContent='Assignee:'; assLbl.className='small';
+        const assInput = document.createElement('input'); assInput.type='text'; assInput.placeholder='e.g., Arielle or Operations';
+        assInput.value = step.assignee || "";
+        assInput.addEventListener('input', ()=>{ step.assignee = assInput.value; persist(); });
+        assRow.appendChild(assLbl); assRow.appendChild(assInput);
+
+        const descLbl = document.createElement('label'); descLbl.textContent='Description:'; descLbl.className='small';
+        const descTa = document.createElement('textarea'); descTa.placeholder='Notes, details, instructions…';
+        descTa.value = step.description || "";
+        descTa.addEventListener('input', ()=>{ step.description = descTa.value; persist(); });
+
+        meta.appendChild(assRow);
+        meta.appendChild(descLbl);
+        meta.appendChild(descTa);
+
+        const tag = document.createElement('div'); tag.className='tag'; tag.textContent=`Step ${idx+1}`;
 
         const rowsWrap = document.createElement('div');
 
-        // Branch rows
+        // outcomes
         step.branches.forEach((branch, bIdx)=>{
           const row = document.createElement('div'); row.className='row';
 
-          // Outcome input
           const outcomeInput = document.createElement('input');
-          outcomeInput.type = 'text';
-          outcomeInput.placeholder = 'Outcome (e.g., Yes / No / Needs Review)';
+          outcomeInput.type='text'; outcomeInput.placeholder='Outcome (e.g., Yes / No / Needs Review)';
           outcomeInput.value = branch.outcome || "";
-          outcomeInput.addEventListener('input', ()=>{
-            branch.outcome = outcomeInput.value;
-            persist();
-          });
+          outcomeInput.addEventListener('input', ()=>{ branch.outcome = outcomeInput.value; persist(); });
 
-          // Parent action select (patched to ensure all options render)
+          const thenLbl = document.createElement('label'); thenLbl.className='small'; thenLbl.textContent='Then:';
+
+          // action select (patched to ensure options always render)
           const actionSelect = document.createElement('select');
           [
             {v:'close', label:'Close Workflow'},
@@ -243,130 +230,76 @@
             {v:'restart_current', label:'Restart Current Step'},
             {v:'jump', label:'Jump to Step'}
           ].forEach(opt=>{
-            const o = document.createElement('option');
-            o.value = opt.v;
-            o.textContent = opt.label;
-            actionSelect.appendChild(o);
+            const o=document.createElement('option'); o.value=opt.v; o.textContent=opt.label; actionSelect.appendChild(o);
           });
-          
-          // Normalize stored action to ensure compatibility with older saves
           if (!branch.action) branch.action = 'close';
           actionSelect.value = branch.action;
-          
-          // Listen for changes
-          actionSelect.addEventListener('change', () => {
-            branch.action = actionSelect.value;
-            // reset next if not jump
-            if (branch.action !== 'jump') branch.next = null;
-            persist();
-            // re-render this row's jump control visibility
-            syncJumpControl();
-          });
 
-          // When action is JUMP: choose target
-          // If allowFuture = false => select list; if true => free-text with datalist
+          // jump controls container
           const jumpWrap = document.createElement('div'); jumpWrap.style.display='contents';
 
-          const makeJumpControl = () => {
+          const makeJumpControl = ()=>{
             jumpWrap.innerHTML = "";
-            if (branch.action !== ACTIONS.JUMP) return;
-
-            if (allowFuture.checked) {
-              // Free-text with datalist suggestions
+            if (branch.action !== 'jump') return;
+            if (allowFuture.checked){
               const lbl = document.createElement('label'); lbl.className='small'; lbl.textContent='Step:';
-              const jumpInput = document.createElement('input');
-              jumpInput.setAttribute('list', `dl-${idx}-${bIdx}`);
-              jumpInput.placeholder = 'Type or select a step';
-              jumpInput.value = branch.next || "";
-
-              const dl = document.createElement('datalist');
-              dl.id = `dl-${idx}-${bIdx}`;
-              jumpTargets(step.name).forEach(n=>{
-                const opt = document.createElement('option'); opt.value = n; dl.appendChild(opt);
-              });
-
-              jumpInput.addEventListener('input', ()=>{
-                branch.next = jumpInput.value.trim() || null;
-                persist();
-              });
-
-              // Group into a mini row
+              const input = document.createElement('input'); input.setAttribute('list', `dl-${idx}-${bIdx}`);
+              input.placeholder='Type or select a step'; input.value = branch.next || "";
+              const dl = document.createElement('datalist'); dl.id=`dl-${idx}-${bIdx}`;
+              jumpTargets(step.name).forEach(n=>{ const opt=document.createElement('option'); opt.value=n; dl.appendChild(opt); });
+              input.addEventListener('input', ()=>{ branch.next = (input.value||"").trim() || null; persist(); });
               const mini = document.createElement('div'); mini.className='row';
-              mini.appendChild(lbl);
-              mini.appendChild(jumpInput);
-              mini.appendChild(dl);
+              mini.appendChild(lbl); mini.appendChild(input); mini.appendChild(dl);
               jumpWrap.appendChild(mini);
             } else {
-              // Strict select from existing steps (excluding self)
               const lbl = document.createElement('label'); lbl.className='small'; lbl.textContent='Step:';
               const sel = document.createElement('select');
               const opts = jumpTargets(step.name);
               sel.innerHTML = `<option value="">Select a step…</option>`;
-              opts.forEach(n=>{
-                const o = document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o);
-              });
+              opts.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
               if (!branch.next || !opts.includes(branch.next)) branch.next = "";
               sel.value = branch.next || "";
-              sel.addEventListener('change', ()=>{
-                branch.next = sel.value || null;
-                persist();
-              });
-
+              sel.addEventListener('change', ()=>{ branch.next = sel.value || null; persist(); });
               const mini = document.createElement('div'); mini.className='row';
-              mini.appendChild(lbl);
-              mini.appendChild(sel);
+              mini.appendChild(lbl); mini.appendChild(sel);
               jumpWrap.appendChild(mini);
             }
           };
 
-          const syncJumpControl = () => { makeJumpControl(); };
+          const syncJumpControl = ()=> makeJumpControl();
 
-          // Delete outcome
-          const delOutcomeBtn = document.createElement('button');
-          delOutcomeBtn.className = 'btn';
-          delOutcomeBtn.textContent = 'Delete';
-          delOutcomeBtn.addEventListener('click', ()=>{
-            step.branches.splice(bIdx,1);
-            persist();
+          actionSelect.addEventListener('change', ()=>{
+            branch.action = actionSelect.value;
+            if (branch.action !== 'jump') branch.next = null;
+            persist(); syncJumpControl();
           });
 
+          const delOutcomeBtn = document.createElement('button'); delOutcomeBtn.className='btn'; delOutcomeBtn.textContent='Delete';
+          delOutcomeBtn.addEventListener('click', ()=>{ step.branches.splice(bIdx,1); persist(); });
+
           row.appendChild(outcomeInput);
-          // Label "Then:" for clarity
-          const thenLbl = document.createElement('label'); thenLbl.className='small'; thenLbl.textContent='Then:';
           row.appendChild(thenLbl);
           row.appendChild(actionSelect);
           row.appendChild(delOutcomeBtn);
-
           rowsWrap.appendChild(row);
           rowsWrap.appendChild(jumpWrap);
           syncJumpControl();
         });
 
-        // Add outcome button
-        const addOutcomeRow = document.createElement('div');
-        addOutcomeRow.className = 'footer';
-        const addOutcomeBtn = document.createElement('button');
-        addOutcomeBtn.className = 'btn';
-        addOutcomeBtn.textContent = 'Add Outcome';
-        addOutcomeBtn.addEventListener('click', ()=>{
-          step.branches.push({ outcome:"", action:ACTIONS.CLOSE, next:null });
-          persist();
-        });
+        const addOutcomeRow = document.createElement('div'); addOutcomeRow.className='footer';
+        const addOutcomeBtn = document.createElement('button'); addOutcomeBtn.className='btn'; addOutcomeBtn.textContent='Add Outcome';
+        addOutcomeBtn.addEventListener('click', ()=>{ step.branches.push({ outcome:"", action:'close', next:null }); persist(); });
         addOutcomeRow.appendChild(addOutcomeBtn);
 
-        // Map line (visual readout)
-        const map = document.createElement('div');
-        map.className = 'mapline';
-        map.textContent = prettyMap(step);
+        const map = document.createElement('div'); map.className='mapline'; map.textContent = prettyMap(step);
 
-        // Assemble card
         card.appendChild(header);
+        card.appendChild(meta);
         card.appendChild(tag);
         card.appendChild(document.createElement('div')).className='divider';
         card.appendChild(rowsWrap);
         card.appendChild(addOutcomeRow);
         card.appendChild(map);
-
         cards.appendChild(card);
       });
     }
@@ -375,19 +308,19 @@
       if (!step.branches.length) return "No outcomes defined yet.";
       return step.branches.map(b=>{
         const out = (b.outcome||'').trim() || "(no label)";
-        if (b.action === ACTIONS.CLOSE) return `• ${out} → Close Workflow`;
-        if (b.action === ACTIONS.RESTART_WORKFLOW) return `• ${out} → Restart Workflow`;
-        if (b.action === ACTIONS.RESTART_CURRENT) return `• ${out} → Restart Current Step`;
-        if (b.action === ACTIONS.JUMP) return `• ${out} → Jump to Step ${b.next || "(unset)"}`;
+        if (b.action === 'close') return `• ${out} → Close Workflow`;
+        if (b.action === 'restart_workflow') return `• ${out} → Restart Workflow`;
+        if (b.action === 'restart_current') return `• ${out} → Restart Current Step`;
+        if (b.action === 'jump') return `• ${out} → Jump to Step ${b.next || "(unset)"}`;
         return `• ${out} → (invalid action)`;
       }).join('\n');
     }
 
-    // ---- Actions ----
+    // actions
     addStepBtn.addEventListener('click', ()=>{
       const base = stepNameInput.value.trim() || "New Step";
       const name = uniqueName(base);
-      steps.push({ name, branches: [] });
+      steps.push({ name, assignee:"", description:"", branches: [] });
       stepNameInput.value = "";
       persist();
     });
@@ -396,39 +329,27 @@
       const payload = JSON.stringify({ steps, allowFuture: !!allowFuture.checked }, null, 2);
       const blob = new Blob([payload], {type:'application/json'});
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'workflow.json';
+      const a = document.createElement('a'); a.href = url; a.download = 'workflow.json';
       document.body.appendChild(a); a.click();
       setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
     });
 
     clearAllBtn.addEventListener('click', ()=>{
-      if (confirm("Clear all steps? This cannot be undone.")){
-        steps = [];
-        persist();
-      }
+      if (confirm("Clear all steps? This cannot be undone.")){ steps = []; persist(); }
     });
 
-    allowFuture.addEventListener('change', ()=>{
-      persist(); // saves the flag & re-renders jump controls
-    });
+    allowFuture.addEventListener('change', ()=>{ persist(); });
 
-    // ---- Jotform integration ----
+    // jotform integration
     JFCustomWidget.subscribe("ready", function(formData){
-      // Load saved value if editing
-      if (formData && typeof formData.value === 'string') {
-        loadFromValue(formData.value);
-      }
-      render();
-      // send initial value
-      persist();
+      if (formData && typeof formData.value === 'string') loadFromValue(formData.value);
+      render(); persist();
     });
 
     JFCustomWidget.subscribe("submit", function(){
       const err = validateAll();
       if (err) {
         showErr(err);
-        // send invalid to block submission if required
         JFCustomWidget.sendSubmit({ valid:false, value: JSON.stringify({ steps, allowFuture: !!allowFuture.checked }) });
         return;
       }
