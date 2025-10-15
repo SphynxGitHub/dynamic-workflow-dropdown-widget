@@ -9,17 +9,31 @@
     :root{
       --bg:#fafafa; --card:#ffffff; --muted:#6a6a6a; --line:#e5e5e5;
       --accent:#3b82f6; --accent-ghost:#e8f0ff; --danger:#e11d48; --radius:14px;
+      --chip:#eef2ff; --chip-text:#1e3a8a; --chip-border:#c7d2fe;
     }
     html,body{margin:0;padding:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111}
-    .wrap{padding:12px}
+    .wrap{padding:12px;max-width:1200px;margin:0 auto}
+    .section{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:12px}
+    .section h3{margin:0 0 8px 0;font-size:15px}
+    .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+    .rowline{display:grid;grid-template-columns:160px 1fr;gap:8px;align-items:center}
+    .rowline label{font-size:12px;color:#475569}
+    input[type="text"], textarea, select{
+      width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit
+    }
+    textarea{min-height:68px;resize:vertical}
     .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-    .toolbar input[type="text"]{flex:1 1 260px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;background:#fff}
     .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;font-size:14px;cursor:pointer}
     .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
     .btn.ghost{background:var(--accent-ghost);color:#274c9f;border-color:#cfe0ff}
     .btn.danger{background:#fff;color:var(--danger);border-color:#ffd1dc}
     .toggle{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;color:#334155}
     .hint{font-size:12px;color:var(--muted);margin-top:2px}
+    .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+    .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:var(--chip);color:var(--chip-text);border:1px solid var(--chip-border);border-radius:999px;font-size:12px}
+    .chip button{border:none;background:none;cursor:pointer;color:#6b7280}
+    .add-assignee{display:flex;gap:8px;margin-top:8px}
+    .add-assignee input{flex:1 1 auto}
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
     .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:0 1px 0 rgba(0,0,0,.02);position:relative}
     .card header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
@@ -28,18 +42,14 @@
     .iconbtn.red{width:34px;height:34px;border-radius:50%;background:var(--danger);color:#fff}
     .iconbtn.red svg{width:18px;height:18px}
     .meta{display:grid;grid-template-columns:1fr;gap:8px;margin:6px 0 10px}
-    .meta .rowline{display:grid;grid-template-columns:90px 1fr;gap:8px;align-items:center}
-    .meta input[type="text"], .meta textarea{
-      width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit
-    }
-    .meta textarea{min-height:72px;resize:vertical}
+    .meta .rowline{grid-template-columns:160px 1fr}
     .tag{font-size:12px;color:var(--muted)}
     .row{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
     .row input[type="text"], .row select, .row input[list]{flex:1 1 40%;min-width:160px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
     .row .btn{padding:8px 10px}
     .divider{height:1px;background:var(--line);margin:10px 0}
     .footer{display:flex;gap:8px;justify-content:flex-end}
-    .empty{border:1px dashed var(--line);border-radius:var(--radius);padding:16px;text-align:center;color:var(--muted);background:#fff}
+    .empty{border:1px dashed var(--line);border-radius:var(--radius);padding:16px;text-align:center;color:#6a6a6a;background:#fff}
     .mapline{font-size:12px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-top:6px;white-space:pre-wrap}
     .error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
     .ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
@@ -48,6 +58,42 @@
 </head>
 <body>
   <div class="wrap">
+
+    <!-- Top-level workflow info -->
+    <div class="section">
+      <h3>Workflow Info</h3>
+      <div class="grid2">
+        <div class="rowline">
+          <label>Workflow Title</label>
+          <input id="wfTitle" type="text" placeholder="e.g., New Client Onboarding" />
+        </div>
+        <div class="rowline">
+          <label>Workflow Starts When</label>
+          <input id="wfStarts" type="text" placeholder="e.g., Contract signed" />
+        </div>
+        <div class="rowline">
+          <label>Workflow Ends When</label>
+          <input id="wfEnds" type="text" placeholder="e.g., Accounts funded + Welcome email sent" />
+        </div>
+        <div class="rowline" style="grid-column:1/-1">
+          <label>Milestone(s)</label>
+          <textarea id="wfMilestones" placeholder="One per line or comma-separated"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Global assignee pool -->
+    <div class="section">
+      <h3>Possible Assignees</h3>
+      <div class="hint">Add names once. Steps can then assign to a “Team Member” from this list, or mark as “Automated”.</div>
+      <div class="chips" id="assigneeChips"></div>
+      <div class="add-assignee">
+        <input id="assigneeInput" type="text" placeholder="e.g., Arielle, Operations, Chad" />
+        <button id="addAssigneeBtn" class="btn">Add</button>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
     <div class="toolbar">
       <input id="stepNameInput" type="text" placeholder="New step name (e.g., Intro Call)" />
       <button id="addStepBtn" class="btn primary">Add Step</button>
@@ -63,16 +109,28 @@
     <div id="statusOk" class="ok">Saved.</div>
     <div id="statusErr" class="error"></div>
 
+    <!-- Steps -->
     <div id="cards" class="grid" aria-live="polite"></div>
     <div id="emptyState" class="empty" style="display:none;">No steps yet. Add your first step above.</div>
   </div>
 
   <script>
-    // actions
+    // Actions
     const ACTIONS = { CLOSE:'close', RESTART_WORKFLOW:'restart_workflow', RESTART_CURRENT:'restart_current', JUMP:'jump' };
 
-    // state
-    let steps = []; // [{ name, assignee, description, branches:[{ outcome, action, next|null }] }]
+    // State
+    let steps = []; // [{ name, assigneeType:'team'|'automated', assignee:null|string, description, branches:[{ outcome, action, next|null }] }]
+    let assigneePool = []; // [string,...]
+    let title = "", startsWhen = "", endsWhen = "", milestones = [];
+    // DOM refs
+    const wfTitle = document.getElementById('wfTitle');
+    const wfStarts = document.getElementById('wfStarts');
+    const wfEnds = document.getElementById('wfEnds');
+    const wfMilestones = document.getElementById('wfMilestones');
+    const chips = document.getElementById('assigneeChips');
+    const assigneeInput = document.getElementById('assigneeInput');
+    const addAssigneeBtn = document.getElementById('addAssigneeBtn');
+
     const stepNameInput = document.getElementById('stepNameInput');
     const addStepBtn = document.getElementById('addStepBtn');
     const exportBtn = document.getElementById('exportBtn');
@@ -83,13 +141,14 @@
     const statusOk = document.getElementById('statusOk');
     const statusErr = document.getElementById('statusErr');
 
-    // utils
+    // Utils
     const debounce = (fn, ms=2000) => { let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),ms); }; };
     const showOk = () => { statusOk.style.display='block'; setTimeout(()=>statusOk.style.display='none', 900); };
     const showErr = (msg) => { statusErr.textContent = msg; statusErr.style.display='block'; setTimeout(()=>statusErr.style.display='none', 3000); };
     const allStepNames = () => steps.map(s=>s.name);
     const hasName = (n) => steps.some(s=>s.name.toLowerCase()===(n||'').toLowerCase());
     const uniqueName = (base) => { let n=(base||'').trim()||'Untitled Step'; if(!hasName(n))return n; let i=2; while(hasName(`${n} ${i}`)) i++; return `${n} ${i}`; };
+    const sanitizeName = (s) => (s||"").trim().replace(/\s+/g,' ');
 
     const renameStepGlobally = (oldName, newName) => {
       steps.forEach(s=>s.branches.forEach(b=>{
@@ -104,28 +163,38 @@
     };
     const jumpTargets = (selfName) => allStepNames().filter(n => n.toLowerCase() !== (selfName||'').toLowerCase());
 
-    // persistence
+    // Persistence (debounced)
     const persist = debounce(() => {
+      const payload = {
+        title, startsWhen, endsWhen, milestones,
+        assigneePool,
+        allowFuture: !!allowFuture.checked,
+        steps
+      };
       try {
-        JFCustomWidget.sendData({ value: JSON.stringify({ steps, allowFuture: !!allowFuture.checked }) });
+        JFCustomWidget.sendData({ value: JSON.stringify(payload) });
         showOk();
       } catch(e) {}
-      render();
+      render(); // keep UI synced
     }, 2000);
 
     const loadFromValue = (v) => {
       if (!v) return;
       try {
         const obj = JSON.parse(v);
-        if (Array.isArray(obj)) { steps = obj; } // legacy
-        else if (obj && Array.isArray(obj.steps)) {
-          steps = obj.steps;
+        if (Array.isArray(obj)) { // legacy (steps only)
+          steps = obj;
+        } else if (obj && typeof obj === 'object') {
+          steps = Array.isArray(obj.steps) ? obj.steps : [];
+          assigneePool = Array.isArray(obj.assigneePool) ? obj.assigneePool : [];
+          title = obj.title || ""; startsWhen = obj.startsWhen || ""; endsWhen = obj.endsWhen || "";
+          milestones = Array.isArray(obj.milestones) ? obj.milestones : (obj.milestones ? String(obj.milestones).split(/[\n,]+/).map(s=>s.trim()).filter(Boolean) : []);
           allowFuture.checked = !!obj.allowFuture;
         }
       } catch(e){}
     };
 
-    // validation
+    // Validation
     function validateAll() {
       const names = allStepNames();
       if (!names.length) return "Add at least one step.";
@@ -134,6 +203,10 @@
       const dup = lower.find((n,i)=> lower.indexOf(n)!==i);
       if (dup) return "Step names must be unique.";
       for (const s of steps) {
+        // if team member selected but not present in pool, warn
+        if (s.assigneeType === 'team' && s.assignee && !assigneePool.includes(s.assignee)) {
+          return `Step "${s.name}" assigns to "${s.assignee}", which is not in Possible Assignees.`;
+        }
         for (const b of s.branches) {
           if (!b.outcome || !b.outcome.trim()) return `Outcome label missing on step "${s.name}".`;
           if (![ACTIONS.CLOSE,ACTIONS.RESTART_WORKFLOW,ACTIONS.RESTART_CURRENT,ACTIONS.JUMP].includes(b.action))
@@ -151,8 +224,52 @@
       return "";
     }
 
-    // render
+    // Top-level inputs listeners
+    wfTitle.addEventListener('input', ()=>{ title = wfTitle.value; persist(); });
+    wfStarts.addEventListener('input', ()=>{ startsWhen = wfStarts.value; persist(); });
+    wfEnds.addEventListener('input', ()=>{ endsWhen = wfEnds.value; persist(); });
+    wfMilestones.addEventListener('input', ()=>{
+      const raw = wfMilestones.value;
+      milestones = raw.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+      persist();
+    });
+
+    // Assignee pool UI
+    function renderAssignees(){
+      chips.innerHTML = "";
+      assigneePool.forEach(name=>{
+        const c = document.createElement('span'); c.className='chip';
+        const txt = document.createElement('span'); txt.textContent = name;
+        const x = document.createElement('button'); x.innerHTML = '&times;'; x.title='Remove';
+        x.addEventListener('click', ()=>{
+          assigneePool = assigneePool.filter(a=>a!==name);
+          // clear any steps referencing removed name
+          steps.forEach(s=>{
+            if (s.assigneeType==='team' && s.assignee===name) s.assignee = "";
+          });
+          persist();
+        });
+        c.appendChild(txt); c.appendChild(x); chips.appendChild(c);
+      });
+    }
+    addAssigneeBtn.addEventListener('click', ()=>{
+      const n = sanitizeName(assigneeInput.value);
+      if (!n) return;
+      if (!assigneePool.includes(n)) assigneePool.push(n);
+      assigneeInput.value = "";
+      persist();
+    });
+    assigneeInput.addEventListener('keydown', (e)=>{
+      if (e.key==='Enter'){ e.preventDefault(); addAssigneeBtn.click(); }
+    });
+
+    // Render steps/cards
     function render(){
+      // top-level fields reflect state
+      wfTitle.value = title; wfStarts.value = startsWhen; wfEnds.value = endsWhen;
+      wfMilestones.value = (milestones||[]).join('\n');
+      renderAssignees();
+
       if (!steps.length){ cards.innerHTML=""; emptyState.style.display=""; return; }
       emptyState.style.display="none"; cards.innerHTML="";
 
@@ -189,21 +306,50 @@
         header.appendChild(titleInput);
         header.appendChild(delBtn);
 
-        // meta: assignee + description
+        // meta: assignee type/name + description
         const meta = document.createElement('div'); meta.className='meta';
-        const assRow = document.createElement('div'); assRow.className='rowline';
-        const assLbl = document.createElement('label'); assLbl.textContent='Assignee:'; assLbl.className='small';
-        const assInput = document.createElement('input'); assInput.type='text'; assInput.placeholder='e.g., Arielle or Operations';
-        assInput.value = step.assignee || "";
-        assInput.addEventListener('input', ()=>{ step.assignee = assInput.value; persist(); });
-        assRow.appendChild(assLbl); assRow.appendChild(assInput);
 
-        const descLbl = document.createElement('label'); descLbl.textContent='Description:'; descLbl.className='small';
+        // Assignee Type
+        const atRow = document.createElement('div'); atRow.className='rowline';
+        const atLbl = document.createElement('label'); atLbl.textContent='Assignee Type'; atLbl.className='small';
+        const atSel = document.createElement('select');
+        [
+          {v:'team', label:'Team Member'},
+          {v:'automated', label:'Automated'}
+        ].forEach(o=>{ const opt=document.createElement('option'); opt.value=o.v; opt.textContent=o.label; atSel.appendChild(opt); });
+        if (!step.assigneeType) step.assigneeType = 'team';
+        atSel.value = step.assigneeType;
+        atSel.addEventListener('change', ()=>{
+          step.assigneeType = atSel.value;
+          if (step.assigneeType!=='team') step.assignee = "";
+          persist(); render(); // re-render to show/hide name select
+        });
+        atRow.appendChild(atLbl); atRow.appendChild(atSel);
+
+        // Assignee Name (only if team)
+        const anRow = document.createElement('div'); anRow.className='rowline';
+        const anLbl = document.createElement('label'); anLbl.textContent='Assignee'; anLbl.className='small';
+        if (step.assigneeType==='team'){
+          const nameSel = document.createElement('select');
+          nameSel.innerHTML = `<option value="">Select a team member…</option>`;
+          assigneePool.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; nameSel.appendChild(o); });
+          if (!assigneePool.includes(step.assignee)) step.assignee = "";
+          nameSel.value = step.assignee || "";
+          nameSel.addEventListener('change', ()=>{ step.assignee = nameSel.value || ""; persist(); });
+          anRow.appendChild(anLbl); anRow.appendChild(nameSel);
+        } else {
+          const info = document.createElement('div'); info.style.color="#475569"; info.textContent="Automated";
+          anRow.appendChild(anLbl); anRow.appendChild(info);
+        }
+
+        // Description
+        const descLbl = document.createElement('label'); descLbl.textContent='Description'; descLbl.className='small';
         const descTa = document.createElement('textarea'); descTa.placeholder='Notes, details, instructions…';
         descTa.value = step.description || "";
         descTa.addEventListener('input', ()=>{ step.description = descTa.value; persist(); });
 
-        meta.appendChild(assRow);
+        meta.appendChild(atRow);
+        meta.appendChild(anRow);
         meta.appendChild(descLbl);
         meta.appendChild(descTa);
 
@@ -222,7 +368,7 @@
 
           const thenLbl = document.createElement('label'); thenLbl.className='small'; thenLbl.textContent='Then:';
 
-          // action select (patched to ensure options always render)
+          // action select
           const actionSelect = document.createElement('select');
           [
             {v:'close', label:'Close Workflow'},
@@ -306,27 +452,35 @@
 
     function prettyMap(step){
       if (!step.branches.length) return "No outcomes defined yet.";
-      return step.branches.map(b=>{
+      const who = step.assigneeType==='team' ? (step.assignee||'(unassigned)') : 'Automated';
+      const head = `Assigned to: ${who}`;
+      const lines = step.branches.map(b=>{
         const out = (b.outcome||'').trim() || "(no label)";
         if (b.action === 'close') return `• ${out} → Close Workflow`;
         if (b.action === 'restart_workflow') return `• ${out} → Restart Workflow`;
         if (b.action === 'restart_current') return `• ${out} → Restart Current Step`;
         if (b.action === 'jump') return `• ${out} → Jump to Step ${b.next || "(unset)"}`;
         return `• ${out} → (invalid action)`;
-      }).join('\n');
+      });
+      return [head, ...lines].join('\n');
     }
 
-    // actions
+    // Toolbar actions
     addStepBtn.addEventListener('click', ()=>{
       const base = stepNameInput.value.trim() || "New Step";
       const name = uniqueName(base);
-      steps.push({ name, assignee:"", description:"", branches: [] });
+      steps.push({ name, assigneeType:'team', assignee:"", description:"", branches: [] });
       stepNameInput.value = "";
       persist();
     });
 
     exportBtn.addEventListener('click', ()=>{
-      const payload = JSON.stringify({ steps, allowFuture: !!allowFuture.checked }, null, 2);
+      const payload = JSON.stringify({
+        title, startsWhen, endsWhen, milestones,
+        assigneePool,
+        allowFuture: !!allowFuture.checked,
+        steps
+      }, null, 2);
       const blob = new Blob([payload], {type:'application/json'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = 'workflow.json';
@@ -335,12 +489,15 @@
     });
 
     clearAllBtn.addEventListener('click', ()=>{
-      if (confirm("Clear all steps? This cannot be undone.")){ steps = []; persist(); }
+      if (confirm("Clear all steps? This cannot be undone.")){
+        steps = []; title=""; startsWhen=""; endsWhen=""; milestones=[]; assigneePool=[];
+        persist();
+      }
     });
 
     allowFuture.addEventListener('change', ()=>{ persist(); });
 
-    // jotform integration
+    // Jotform integration
     JFCustomWidget.subscribe("ready", function(formData){
       if (formData && typeof formData.value === 'string') loadFromValue(formData.value);
       render(); persist();
@@ -350,10 +507,16 @@
       const err = validateAll();
       if (err) {
         showErr(err);
-        JFCustomWidget.sendSubmit({ valid:false, value: JSON.stringify({ steps, allowFuture: !!allowFuture.checked }) });
+        JFCustomWidget.sendSubmit({ valid:false, value: JSON.stringify({
+          title, startsWhen, endsWhen, milestones,
+          assigneePool, allowFuture: !!allowFuture.checked, steps
+        }) });
         return;
       }
-      JFCustomWidget.sendSubmit({ valid:true, value: JSON.stringify({ steps, allowFuture: !!allowFuture.checked }) });
+      JFCustomWidget.sendSubmit({ valid:true, value: JSON.stringify({
+        title, startsWhen, endsWhen, milestones,
+        assigneePool, allowFuture: !!allowFuture.checked, steps
+      }) });
     });
   </script>
 </body>
