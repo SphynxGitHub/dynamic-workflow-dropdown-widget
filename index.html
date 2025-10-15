@@ -1,80 +1,325 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Dynamic Workflow Dropdown</title>
-    <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        padding: 8px;
-      }
-      select {
-        width: 100%;
-        padding: 6px;
-        font-size: 14px;
-      }
-      .note {
-        font-size: 12px;
-        color: #666;
-        margin-top: 4px;
-      }
-    </style>
-  </head>
-  <body>
-    <label for="nextStep">Select Next Step:</label>
-    <select id="nextStep">
-      <option value="">Loading...</option>
-    </select>
-    <div class="note">
-      Options update as you type other step names in this form.
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Branching Workflow Builder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Jotform Widget SDK -->
+  <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
+  <style>
+    :root{
+      --bg:#fafafa;
+      --card:#ffffff;
+      --muted:#6a6a6a;
+      --line:#e5e5e5;
+      --accent:#3b82f6;
+      --accent-ghost:#e8f0ff;
+      --danger:#e11d48;
+      --radius:14px;
+    }
+    html,body{margin:0;padding:0;background:var(--bg);font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;color:#222}
+    .wrap{padding:12px}
+    .toolbar{
+      display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px
+    }
+    .toolbar input[type="text"]{
+      flex:1 1 260px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px
+    }
+    .btn{
+      border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;font-size:14px;cursor:pointer
+    }
+    .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .btn.ghost{background:var(--accent-ghost);color:#274c9f;border-color:#cfe0ff}
+    .btn.danger{background:#fff;color:var(--danger);border-color:#ffd1dc}
+    .hint{font-size:12px;color:var(--muted);margin-top:2px}
+
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+    .card{
+      background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+      padding:12px;box-shadow:0 1px 0 rgba(0,0,0,.02)
+    }
+    .card header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    .card header input{
+      flex:1 1 auto;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-weight:600
+    }
+    .tag{font-size:12px;color:var(--muted)}
+    .row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+    .row input[type="text"]{flex:1 1 40%;padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+    .row select{flex:1 1 45%;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
+    .row .btn{padding:8px 10px}
+    .divider{height:1px;background:var(--line);margin:10px 0}
+    .footer{display:flex;gap:8px;justify-content:flex-end}
+    .empty{
+      border:1px dashed var(--line);border-radius:var(--radius);padding:16px;text-align:center;color:var(--muted);background:#fff
+    }
+    .mapline{font-size:12px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-top:6px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <input id="stepNameInput" type="text" placeholder="New step name (e.g., Intro Call)" />
+      <button id="addStepBtn" class="btn primary">Add Step</button>
+      <button id="exportBtn" class="btn ghost" title="Copy JSON to clipboard">Export JSON</button>
+      <button id="clearAllBtn" class="btn danger" title="Remove all steps">Clear All</button>
     </div>
-    <script>
-      (function () {
-        const select = document.getElementById("nextStep");
-        let currentFields = {};
-        let currentStepLabel = "";
+    <div class="hint">Tip: For each step, add one or more outcomes (e.g., “Yes”, “No”) and choose where each outcome leads.</div>
 
-        // Wait for Jotform to initialize
-        JFCustomWidget.subscribe("ready", function (formData) {
-          currentFields = formData.fields || {};
-          currentStepLabel = JFCustomWidget.getWidgetSetting("CurrentStepLabel") || "";
-          populateDropdown(currentFields);
+    <div id="cards" class="grid" aria-live="polite"></div>
+    <div id="emptyState" class="empty" style="display:none;">No steps yet. Add your first step above.</div>
+  </div>
 
-          JFCustomWidget.subscribe("fieldChange", function (update) {
-            currentFields = update.fields;
-            populateDropdown(currentFields);
-          });
+  <script>
+    // --- Model ---
+    // We store by name for readability. We'll keep names unique; when a step is renamed, we update all references.
+    let steps = []; // [{ name: "Step A", branches: [{outcome:"Yes", next:"Step B"|"_END"}] }]
+
+    const END = "_END"; // sentinel for End of Workflow
+
+    // --- DOM refs ---
+    const stepNameInput = document.getElementById('stepNameInput');
+    const addStepBtn = document.getElementById('addStepBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const cards = document.getElementById('cards');
+    const emptyState = document.getElementById('emptyState');
+
+    // --- Helpers ---
+    const debounce = (fn, ms=150) => {
+      let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),ms); };
+    };
+
+    const uniqueName = (base) => {
+      let n = base.trim() || "Untitled Step";
+      if (!steps.find(s=>s.name.toLowerCase()===n.toLowerCase())) return n;
+      let i=2;
+      while(steps.find(s=>s.name.toLowerCase()===(`${n} ${i}`).toLowerCase())) i++;
+      return `${n} ${i}`;
+    };
+
+    const saveToJotform = debounce(() => {
+      try {
+        const payload = JSON.stringify(steps);
+        JFCustomWidget.sendData({ value: payload });
+      } catch(e) {
+        // no-op
+      }
+      render(); // keep UI fresh
+    }, 120);
+
+    const loadFromJotform = (valueStr) => {
+      try {
+        if (!valueStr) return;
+        const parsed = JSON.parse(valueStr);
+        if (Array.isArray(parsed)) steps = parsed;
+      } catch(e){ /* ignore */ }
+    };
+
+    const allStepNames = () => steps.map(s=>s.name);
+
+    const renameStepGlobally = (oldName, newName) => {
+      steps.forEach(s=>{
+        s.branches.forEach(b=>{
+          if (b.next === oldName) b.next = newName;
+        });
+      });
+    };
+
+    const deleteStepGlobally = (name) => {
+      // remove the step
+      steps = steps.filter(s=>s.name !== name);
+      // any branch pointing to it -> set to END
+      steps.forEach(s=>{
+        s.branches.forEach(b=>{
+          if (b.next === name) b.next = END;
+        });
+      });
+    };
+
+    const nextOptionsForSelect = (selfName) => {
+      // options are all steps except this one, plus End of Workflow
+      const names = allStepNames().filter(n => n.toLowerCase() !== selfName.toLowerCase());
+      return [ ...names, END ];
+    };
+
+    // --- UI renderers ---
+    function render(){
+      // empty state
+      if (steps.length === 0){
+        cards.innerHTML = "";
+        emptyState.style.display = "";
+        return;
+      }
+      emptyState.style.display = "none";
+
+      cards.innerHTML = "";
+      steps.forEach((step, idx)=>{
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        // Header: editable step name, delete step
+        const header = document.createElement('header');
+        const titleInput = document.createElement('input');
+        titleInput.value = step.name;
+        titleInput.placeholder = "Step name";
+        titleInput.addEventListener('change', ()=>{
+          const newName = uniqueName(titleInput.value);
+          if (newName !== step.name){
+            const old = step.name;
+            step.name = newName;
+            renameStepGlobally(old, newName);
+            saveToJotform();
+          } else {
+            // ensure canonical (uniqueName may append number)
+            step.name = newName;
+            saveToJotform();
+          }
         });
 
-        function populateDropdown(fields) {
-          const stepNames = [];
-          Object.values(fields).forEach((f) => {
-            const label = f.label || "";
-            const val = f.value || "";
-            if (/step/i.test(label) && val.trim()) stepNames.push(val.trim());
-          });
-
-          select.innerHTML =
-            `<option value="">Select a step...</option>` +
-            stepNames
-              .filter((name) => name.toLowerCase() !== currentStepLabel.toLowerCase())
-              .map((s) => `<option value="${s}">${s}</option>`)
-              .join("") +
-            `<option value="End of Workflow">End of Workflow</option>`;
-        }
-
-        select.addEventListener("change", () => {
-          JFCustomWidget.sendData({ value: select.value });
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn danger';
+        delBtn.textContent = 'Delete Step';
+        delBtn.addEventListener('click', ()=>{
+          if (confirm(`Delete "${step.name}"? Any branches pointing here will be set to End of Workflow.`)){
+            deleteStepGlobally(step.name);
+            saveToJotform();
+          }
         });
 
-        JFCustomWidget.subscribe("submit", () => {
-          JFCustomWidget.sendSubmit({
-            valid: true,
-            value: select.value,
+        header.appendChild(titleInput);
+        header.appendChild(delBtn);
+
+        const tag = document.createElement('div');
+        tag.className = 'tag';
+        tag.textContent = `Step ${idx+1}`;
+
+        // Branch rows
+        const rowsWrap = document.createElement('div');
+
+        step.branches.forEach((branch, bIdx)=>{
+          const row = document.createElement('div');
+          row.className = 'row';
+
+          const outcomeInput = document.createElement('input');
+          outcomeInput.type = 'text';
+          outcomeInput.placeholder = 'Outcome (e.g., Yes / No / Needs Review)';
+          outcomeInput.value = branch.outcome || "";
+          outcomeInput.addEventListener('input', ()=>{
+            branch.outcome = outcomeInput.value;
+            saveToJotform();
           });
+
+          const nextSelect = document.createElement('select');
+          const opts = nextOptionsForSelect(step.name);
+          nextSelect.innerHTML = "";
+          opts.forEach(opt=>{
+            const o = document.createElement('option');
+            o.value = opt;
+            o.textContent = (opt===END) ? 'End of Workflow' : opt;
+            nextSelect.appendChild(o);
+          });
+          if (!branch.next) branch.next = END;
+          if (!opts.includes(branch.next)) branch.next = END;
+          nextSelect.value = branch.next;
+          nextSelect.addEventListener('change', ()=>{
+            branch.next = nextSelect.value;
+            saveToJotform();
+          });
+
+          const delOutcomeBtn = document.createElement('button');
+          delOutcomeBtn.className = 'btn';
+          delOutcomeBtn.textContent = 'Delete';
+          delOutcomeBtn.addEventListener('click', ()=>{
+            step.branches.splice(bIdx,1);
+            saveToJotform();
+          });
+
+          row.appendChild(outcomeInput);
+          row.appendChild(nextSelect);
+          row.appendChild(delOutcomeBtn);
+          rowsWrap.appendChild(row);
         });
-      })();
-    </script>
-  </body>
+
+        // Add outcome button
+        const addOutcomeRow = document.createElement('div');
+        addOutcomeRow.className = 'footer';
+        const addOutcomeBtn = document.createElement('button');
+        addOutcomeBtn.className = 'btn';
+        addOutcomeBtn.textContent = 'Add Outcome';
+        addOutcomeBtn.addEventListener('click', ()=>{
+          step.branches.push({ outcome: "", next: END });
+          saveToJotform();
+        });
+        addOutcomeRow.appendChild(addOutcomeBtn);
+
+        // Map line (visual readout)
+        const map = document.createElement('div');
+        map.className = 'mapline';
+        map.textContent = prettyMap(step);
+
+        card.appendChild(header);
+        card.appendChild(tag);
+        card.appendChild(document.createElement('div')).className='divider';
+        card.appendChild(rowsWrap);
+        card.appendChild(addOutcomeRow);
+        card.appendChild(map);
+
+        cards.appendChild(card);
+      });
+    }
+
+    function prettyMap(step){
+      if (!step.branches.length) return "No outcomes defined yet.";
+      return step.branches.map(b=>{
+        const to = (b.next===END) ? "End of Workflow" : b.next || "(unset)";
+        const out = b.outcome?.trim() || "(no label)";
+        return `• ${out} → ${to}`;
+      }).join('   ');
+    }
+
+    // --- Actions ---
+    addStepBtn.addEventListener('click', ()=>{
+      const base = stepNameInput.value.trim() || "New Step";
+      const name = uniqueName(base);
+      steps.push({ name, branches: [] });
+      stepNameInput.value = "";
+      saveToJotform();
+    });
+
+    exportBtn.addEventListener('click', async ()=>{
+      const payload = JSON.stringify(steps, null, 2);
+      try{
+        await navigator.clipboard.writeText(payload);
+        exportBtn.textContent = "Copied!";
+        setTimeout(()=>exportBtn.textContent="Export JSON", 1200);
+      } catch(e){
+        alert(payload);
+      }
+    });
+
+    clearAllBtn.addEventListener('click', ()=>{
+      if (confirm("Clear all steps? This cannot be undone.")){
+        steps = [];
+        saveToJotform();
+      }
+    });
+
+    // --- Jotform integration ---
+    JFCustomWidget.subscribe("ready", function(formData){
+      // Load saved value if user is editing a submission
+      if (formData && typeof formData.value === 'string'){
+        loadFromJotform(formData.value);
+      }
+      render();
+      // Ensure initial send so Jotform has the value immediately
+      saveToJotform();
+    });
+
+    JFCustomWidget.subscribe("submit", function(){
+      // If required, consider minimal validation here (at least one step etc.)
+      const payload = JSON.stringify(steps);
+      JFCustomWidget.sendSubmit({ valid: true, value: payload });
+    });
+  </script>
+</body>
 </html>
