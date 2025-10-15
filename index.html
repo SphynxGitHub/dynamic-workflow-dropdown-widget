@@ -27,8 +27,7 @@
     .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
     .btn.ghost{background:var(--accent-ghost);color:#274c9f;border-color:#cfe0ff}
     .btn.danger{background:#fff;color:var(--danger);border-color:#ffd1dc}
-    .toggle{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:13px;color:#334155}
-    .hint{font-size:12px;color:var(--muted);margin-top:2px}
+    .hint{font-size:12px;color:#6a6a6a;margin-top:2px}
     .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
     .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:var(--chip);color:var(--chip-text);border:1px solid var(--chip-border);border-radius:999px;font-size:12px}
     .chip button{border:none;background:none;cursor:pointer;color:#6b7280}
@@ -54,6 +53,15 @@
     .error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
     .ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
     label.small{font-size:12px;color:#475569}
+    /* resources */
+    details.resource{border:1px solid var(--line);border-radius:10px;padding:8px;margin:8px 0;background:#fff}
+    details.resource summary{cursor:pointer;outline:none;font-weight:600}
+    .resgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:8px}
+    .resrow{display:grid;grid-template-columns:140px 1fr;gap:8px;align-items:center}
+    .resrow label{font-size:12px;color:#475569}
+    .reshead{display:flex;align-items:center;gap:8px}
+    .res-del{margin-left:auto}
+    .mini{font-size:12px;color:#6b7280}
   </style>
 </head>
 <body>
@@ -93,16 +101,28 @@
       </div>
     </div>
 
+    <!-- Top-level resources -->
+    <div class="section">
+      <h3>Resources</h3>
+      <div class="hint">Attach forms, email templates, or other docs/links used across the workflow. For large files, prefer links.</div>
+      <div id="topResources"></div>
+      <div class="row" style="margin-top:8px">
+        <select id="topResType">
+          <option value="form">Form</option>
+          <option value="email">Email Template</option>
+          <option value="other">Other Document or Link</option>
+        </select>
+        <input id="topResName" type="text" placeholder="Resource name (required)" />
+        <button id="addTopRes" class="btn">Add Resource</button>
+      </div>
+    </div>
+
     <!-- Toolbar -->
     <div class="toolbar">
       <input id="stepNameInput" type="text" placeholder="New step name (e.g., Intro Call)" />
       <button id="addStepBtn" class="btn primary">Add Step</button>
       <button id="exportBtn" class="btn ghost" title="Download JSON">Download JSON</button>
       <button id="clearAllBtn" class="btn danger" title="Remove all steps">Clear All</button>
-      <label class="toggle">
-        <input id="allowFuture" type="checkbox" />
-        Allow linking to future steps
-      </label>
     </div>
     <div class="hint">Each step can branch by outcome. Choose: <b>Close Workflow</b>, <b>Restart Workflow</b>, <b>Restart Current Step</b>, or <b>Jump to Step</b> (then pick a step).</div>
 
@@ -115,27 +135,39 @@
   </div>
 
   <script>
-    // Actions
+    // Actions (branch outcomes)
     const ACTIONS = { CLOSE:'close', RESTART_WORKFLOW:'restart_workflow', RESTART_CURRENT:'restart_current', JUMP:'jump' };
 
     // State
-    let steps = []; // [{ name, assigneeType:'team'|'automated', assignee:null|string, description, branches:[{ outcome, action, next|null }] }]
+    let steps = []; // [{ name, assigneeType:'team'|'automated', assignee:string, description, resources:[Resource], branches:[{ outcome, action, next|null }] }]
     let assigneePool = []; // [string,...]
     let title = "", startsWhen = "", endsWhen = "", milestones = [];
-    // DOM refs
+    let topResources = []; // [Resource]
+    // Resource shape:
+    // { type:'form'|'email'|'other', name, link, fileName, fileData, email?:{subject,body,to,from,conditions} }
+
+    // DOM refs (top-level info)
     const wfTitle = document.getElementById('wfTitle');
     const wfStarts = document.getElementById('wfStarts');
     const wfEnds = document.getElementById('wfEnds');
     const wfMilestones = document.getElementById('wfMilestones');
+
+    // Assignee pool
     const chips = document.getElementById('assigneeChips');
     const assigneeInput = document.getElementById('assigneeInput');
     const addAssigneeBtn = document.getElementById('addAssigneeBtn');
 
+    // Top resources
+    const topResList = document.getElementById('topResources');
+    const topResType = document.getElementById('topResType');
+    const topResName = document.getElementById('topResName');
+    const addTopResBtn = document.getElementById('addTopRes');
+
+    // Steps
     const stepNameInput = document.getElementById('stepNameInput');
     const addStepBtn = document.getElementById('addStepBtn');
     const exportBtn = document.getElementById('exportBtn');
     const clearAllBtn = document.getElementById('clearAllBtn');
-    const allowFuture = document.getElementById('allowFuture');
     const cards = document.getElementById('cards');
     const emptyState = document.getElementById('emptyState');
     const statusOk = document.getElementById('statusOk');
@@ -150,6 +182,14 @@
     const uniqueName = (base) => { let n=(base||'').trim()||'Untitled Step'; if(!hasName(n))return n; let i=2; while(hasName(`${n} ${i}`)) i++; return `${n} ${i}`; };
     const sanitizeName = (s) => (s||"").trim().replace(/\s+/g,' ');
 
+    const fileToDataUrl = (file) => new Promise((resolve,reject)=>{
+      const fr=new FileReader();
+      fr.onload=()=>resolve(fr.result);
+      fr.onerror=reject;
+      fr.readAsDataURL(file);
+    });
+
+    // Step name propagation
     const renameStepGlobally = (oldName, newName) => {
       steps.forEach(s=>s.branches.forEach(b=>{
         if (b.action===ACTIONS.JUMP && b.next===oldName) b.next = newName;
@@ -168,7 +208,7 @@
       const payload = {
         title, startsWhen, endsWhen, milestones,
         assigneePool,
-        allowFuture: !!allowFuture.checked,
+        resources: topResources,
         steps
       };
       try {
@@ -182,14 +222,15 @@
       if (!v) return;
       try {
         const obj = JSON.parse(v);
-        if (Array.isArray(obj)) { // legacy (steps only)
+        if (Array.isArray(obj)) { // legacy steps-only
           steps = obj;
         } else if (obj && typeof obj === 'object') {
           steps = Array.isArray(obj.steps) ? obj.steps : [];
           assigneePool = Array.isArray(obj.assigneePool) ? obj.assigneePool : [];
           title = obj.title || ""; startsWhen = obj.startsWhen || ""; endsWhen = obj.endsWhen || "";
-          milestones = Array.isArray(obj.milestones) ? obj.milestones : (obj.milestones ? String(obj.milestones).split(/[\n,]+/).map(s=>s.trim()).filter(Boolean) : []);
-          allowFuture.checked = !!obj.allowFuture;
+          if (Array.isArray(obj.milestones)) milestones = obj.milestones;
+          else if (obj.milestones) milestones = String(obj.milestones).split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+          topResources = Array.isArray(obj.resources) ? obj.resources : [];
         }
       } catch(e){}
     };
@@ -203,7 +244,6 @@
       const dup = lower.find((n,i)=> lower.indexOf(n)!==i);
       if (dup) return "Step names must be unique.";
       for (const s of steps) {
-        // if team member selected but not present in pool, warn
         if (s.assigneeType === 'team' && s.assignee && !assigneePool.includes(s.assignee)) {
           return `Step "${s.name}" assigns to "${s.assignee}", which is not in Possible Assignees.`;
         }
@@ -212,19 +252,14 @@
           if (![ACTIONS.CLOSE,ACTIONS.RESTART_WORKFLOW,ACTIONS.RESTART_CURRENT,ACTIONS.JUMP].includes(b.action))
             return `Invalid action on step "${s.name}".`;
           if (b.action===ACTIONS.JUMP) {
-            if (!allowFuture.checked) {
-              const options = jumpTargets(s.name);
-              if (!b.next || !options.includes(b.next)) return `On step "${s.name}", outcome "${b.outcome}" must jump to an existing step (not itself).`;
-            } else {
-              if (!b.next || !b.next.trim()) return `On step "${s.name}", outcome "${b.outcome}" must specify a jump target.`;
-            }
+            if (!b.next || !b.next.trim()) return `On step "${s.name}", outcome "${b.outcome}" must specify a jump target.`;
           }
         }
       }
       return "";
     }
 
-    // Top-level inputs listeners
+    // Top-level inputs
     wfTitle.addEventListener('input', ()=>{ title = wfTitle.value; persist(); });
     wfStarts.addEventListener('input', ()=>{ startsWhen = wfStarts.value; persist(); });
     wfEnds.addEventListener('input', ()=>{ endsWhen = wfEnds.value; persist(); });
@@ -243,7 +278,6 @@
         const x = document.createElement('button'); x.innerHTML = '&times;'; x.title='Remove';
         x.addEventListener('click', ()=>{
           assigneePool = assigneePool.filter(a=>a!==name);
-          // clear any steps referencing removed name
           steps.forEach(s=>{
             if (s.assigneeType==='team' && s.assignee===name) s.assignee = "";
           });
@@ -263,12 +297,123 @@
       if (e.key==='Enter'){ e.preventDefault(); addAssigneeBtn.click(); }
     });
 
-    // Render steps/cards
+    // Resource editors
+    function resourceSummary(r){
+      if (!r) return "(empty)";
+      const base = r.name ? `${r.name}` : "(unnamed)";
+      const type = r.type==='email' ? "Email Template"
+                 : r.type==='form' ? "Form"
+                 : "Other";
+      return `${type}: ${base}`;
+    }
+    function resourceFields(container, r, onChange){
+      // Build fields depending on type
+      const grid = document.createElement('div'); grid.className = 'resgrid';
+
+      // Common: name
+      const rowName = document.createElement('div'); rowName.className='resrow';
+      const lblName = document.createElement('label'); lblName.textContent='Name';
+      const inpName = document.createElement('input'); inpName.type='text'; inpName.value=r.name||"";
+      inpName.placeholder='Resource name';
+      inpName.addEventListener('input', ()=>{ r.name = inpName.value; onChange(); });
+      rowName.appendChild(lblName); rowName.appendChild(inpName);
+      grid.appendChild(rowName);
+
+      if (r.type==='email'){
+        // Email fields
+        const mk = (lab, key, ph='')=>{
+          const row=document.createElement('div'); row.className='resrow';
+          const l=document.createElement('label'); l.textContent=lab;
+          const input=document.createElement(key==='body'?'textarea':'input');
+          if (key!=='body') input.type='text';
+          input.value=(r.email?.[key])||"";
+          input.placeholder=ph;
+          input.addEventListener('input', ()=>{
+            r.email = r.email || {};
+            r.email[key] = input.value;
+            onChange();
+          });
+          row.appendChild(l); row.appendChild(input); grid.appendChild(row);
+        };
+        mk('Subject','subject','Subject line');
+        mk('Body','body','Email body...');
+        mk('To','to','email@example.com');
+        mk('From','from','noreply@example.com');
+        mk('Conditions','conditions','e.g., if client type = VIP');
+      } else {
+        // Link (URL)
+        const rowLink = document.createElement('div'); rowLink.className='resrow';
+        const lblLink = document.createElement('label'); lblLink.textContent='Link';
+        const inpLink = document.createElement('input'); inpLink.type='text'; inpLink.placeholder='https://...';
+        inpLink.value = r.link||"";
+        inpLink.addEventListener('input', ()=>{ r.link = inpLink.value; onChange(); });
+        rowLink.appendChild(lblLink); rowLink.appendChild(inpLink);
+        grid.appendChild(rowLink);
+      }
+
+      // Optional file upload (any type, encoded to base64)
+      const rowFile = document.createElement('div'); rowFile.className='resrow';
+      const lblFile = document.createElement('label'); lblFile.textContent='Upload File';
+      const inpFile = document.createElement('input'); inpFile.type='file';
+      inpFile.addEventListener('change', async ()=>{
+        const file = inpFile.files?.[0];
+        if (!file) { r.fileName=""; r.fileData=""; onChange(); return; }
+        r.fileName = file.name;
+        try { r.fileData = await fileToDataUrl(file); } catch(e){ r.fileData=""; }
+        onChange();
+      });
+      const mini = document.createElement('div'); mini.className='mini';
+      mini.textContent = r.fileName ? `Attached: ${r.fileName}` : 'No file attached';
+      rowFile.appendChild(lblFile); rowFile.appendChild(inpFile); grid.appendChild(rowFile);
+      grid.appendChild(mini);
+
+      container.appendChild(grid);
+    }
+    function renderResourceList(listEl, arr, onChange){
+      listEl.innerHTML = "";
+      if (!arr.length){
+        const empty = document.createElement('div'); empty.className='mini'; empty.textContent='No resources yet.';
+        listEl.appendChild(empty); return;
+      }
+      arr.forEach((r, idx)=>{
+        const det = document.createElement('details'); det.className='resource';
+        const sum = document.createElement('summary'); sum.className='reshead';
+        const title = document.createElement('span'); title.textContent = resourceSummary(r);
+        const del = document.createElement('button'); del.className='btn res-del'; del.textContent='Delete';
+        del.addEventListener('click', (e)=>{ e.preventDefault(); arr.splice(idx,1); onChange(); });
+        sum.appendChild(title); sum.appendChild(del);
+        det.appendChild(sum);
+
+        const inner = document.createElement('div');
+        resourceFields(inner, r, onChange);
+        det.appendChild(inner);
+
+        listEl.appendChild(det);
+      });
+    }
+
+    // Top resources UI
+    function renderTopResources(){
+      renderResourceList(topResList, topResources, persist);
+    }
+    addTopResBtn.addEventListener('click', ()=>{
+      const t = topResType.value;
+      const n = sanitizeName(topResName.value);
+      if (!n){ showErr("Resource name is required."); return; }
+      const base = { type:t, name:n, link:"", fileName:"", fileData:"" };
+      if (t==='email') base.email = { subject:"", body:"", to:"", from:"", conditions:"" };
+      topResources.push(base);
+      topResName.value = "";
+      persist();
+    });
+
+    // Render cards/steps
     function render(){
-      // top-level fields reflect state
+      // top-level reflect state
       wfTitle.value = title; wfStarts.value = startsWhen; wfEnds.value = endsWhen;
       wfMilestones.value = (milestones||[]).join('\n');
       renderAssignees();
+      renderTopResources();
 
       if (!steps.length){ cards.innerHTML=""; emptyState.style.display=""; return; }
       emptyState.style.display="none"; cards.innerHTML="";
@@ -322,7 +467,7 @@
         atSel.addEventListener('change', ()=>{
           step.assigneeType = atSel.value;
           if (step.assigneeType!=='team') step.assignee = "";
-          persist(); render(); // re-render to show/hide name select
+          persist(); render();
         });
         atRow.appendChild(atLbl); atRow.appendChild(atSel);
 
@@ -348,16 +493,32 @@
         descTa.value = step.description || "";
         descTa.addEventListener('input', ()=>{ step.description = descTa.value; persist(); });
 
-        meta.appendChild(atRow);
-        meta.appendChild(anRow);
-        meta.appendChild(descLbl);
-        meta.appendChild(descTa);
-
-        const tag = document.createElement('div'); tag.className='tag'; tag.textContent=`Step ${idx+1}`;
-
-        const rowsWrap = document.createElement('div');
+        // Step resources (collapsible list)
+        const resHdr = document.createElement('div'); resHdr.className='tag'; resHdr.textContent='Resources';
+        const stepResList = document.createElement('div');
+        if (!Array.isArray(step.resources)) step.resources = [];
+        const addStepResWrap = document.createElement('div'); addStepResWrap.className='row';
+        const stepResType = document.createElement('select');
+        ['form','email','other'].forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=(t==='email'?'Email Template':t==='form'?'Form':'Other Document or Link'); stepResType.appendChild(o); });
+        const stepResName = document.createElement('input'); stepResName.type='text'; stepResName.placeholder='Resource name (required)';
+        const addStepResBtn = document.createElement('button'); addStepResBtn.className='btn'; addStepResBtn.textContent='Add Resource';
+        addStepResBtn.addEventListener('click', ()=>{
+          const t = stepResType.value;
+          const n = sanitizeName(stepResName.value);
+          if (!n){ showErr("Resource name is required."); return; }
+          const base = { type:t, name:n, link:"", fileName:"", fileData:"" };
+          if (t==='email') base.email = { subject:"", body:"", to:"", from:"", conditions:"" };
+          step.resources.push(base);
+          stepResName.value = "";
+          persist();
+        });
+        addStepResWrap.appendChild(stepResType);
+        addStepResWrap.appendChild(stepResName);
+        addStepResWrap.appendChild(addStepResBtn);
 
         // outcomes
+        const rowsWrap = document.createElement('div');
+
         step.branches.forEach((branch, bIdx)=>{
           const row = document.createElement('div'); row.className='row';
 
@@ -381,37 +542,23 @@
           if (!branch.action) branch.action = 'close';
           actionSelect.value = branch.action;
 
-          // jump controls container
           const jumpWrap = document.createElement('div'); jumpWrap.style.display='contents';
 
           const makeJumpControl = ()=>{
             jumpWrap.innerHTML = "";
             if (branch.action !== 'jump') return;
-            if (allowFuture.checked){
-              const lbl = document.createElement('label'); lbl.className='small'; lbl.textContent='Step:';
-              const input = document.createElement('input'); input.setAttribute('list', `dl-${idx}-${bIdx}`);
-              input.placeholder='Type or select a step'; input.value = branch.next || "";
-              const dl = document.createElement('datalist'); dl.id=`dl-${idx}-${bIdx}`;
-              jumpTargets(step.name).forEach(n=>{ const opt=document.createElement('option'); opt.value=n; dl.appendChild(opt); });
-              input.addEventListener('input', ()=>{ branch.next = (input.value||"").trim() || null; persist(); });
-              const mini = document.createElement('div'); mini.className='row';
-              mini.appendChild(lbl); mini.appendChild(input); mini.appendChild(dl);
-              jumpWrap.appendChild(mini);
-            } else {
-              const lbl = document.createElement('label'); lbl.className='small'; lbl.textContent='Step:';
-              const sel = document.createElement('select');
-              const opts = jumpTargets(step.name);
-              sel.innerHTML = `<option value="">Select a step…</option>`;
-              opts.forEach(n=>{ const o=document.createElement('option'); o.value=n; o.textContent=n; sel.appendChild(o); });
-              if (!branch.next || !opts.includes(branch.next)) branch.next = "";
-              sel.value = branch.next || "";
-              sel.addEventListener('change', ()=>{ branch.next = sel.value || null; persist(); });
-              const mini = document.createElement('div'); mini.className='row';
-              mini.appendChild(lbl); mini.appendChild(sel);
-              jumpWrap.appendChild(mini);
-            }
-          };
 
+            const lbl = document.createElement('label'); lbl.className='small'; lbl.textContent='Step:';
+            const input = document.createElement('input'); input.setAttribute('list', `dl-${idx}-${bIdx}`);
+            input.placeholder='Type or select a step'; input.value = branch.next || "";
+            const dl = document.createElement('datalist'); dl.id=`dl-${idx}-${bIdx}`;
+            jumpTargets(step.name).forEach(n=>{ const opt=document.createElement('option'); opt.value=n; dl.appendChild(opt); });
+            input.addEventListener('input', ()=>{ branch.next = (input.value||"").trim() || null; persist(); });
+
+            const mini = document.createElement('div'); mini.className='row';
+            mini.appendChild(lbl); mini.appendChild(input); mini.appendChild(dl);
+            jumpWrap.appendChild(mini);
+          };
           const syncJumpControl = ()=> makeJumpControl();
 
           actionSelect.addEventListener('change', ()=>{
@@ -439,8 +586,26 @@
 
         const map = document.createElement('div'); map.className='mapline'; map.textContent = prettyMap(step);
 
+        // assemble card
         card.appendChild(header);
-        card.appendChild(meta);
+
+        const metaWrap = document.createElement('div'); metaWrap.className='meta';
+        // Assignee rows
+        metaWrap.appendChild(atRow);
+        metaWrap.appendChild(anRow);
+        // Description
+        metaWrap.appendChild(descLbl);
+        metaWrap.appendChild(descTa);
+        // Step resources
+        metaWrap.appendChild(resHdr);
+        const stepResContainer = document.createElement('div');
+        renderResourceList(stepResContainer, step.resources, persist);
+        metaWrap.appendChild(stepResContainer);
+        metaWrap.appendChild(addStepResWrap);
+
+        card.appendChild(metaWrap);
+
+        const tag = document.createElement('div'); tag.className='tag'; tag.textContent=`Step ${idx+1}`;
         card.appendChild(tag);
         card.appendChild(document.createElement('div')).className='divider';
         card.appendChild(rowsWrap);
@@ -469,7 +634,7 @@
     addStepBtn.addEventListener('click', ()=>{
       const base = stepNameInput.value.trim() || "New Step";
       const name = uniqueName(base);
-      steps.push({ name, assigneeType:'team', assignee:"", description:"", branches: [] });
+      steps.push({ name, assigneeType:'team', assignee:"", description:"", resources:[], branches: [] });
       stepNameInput.value = "";
       persist();
     });
@@ -478,7 +643,7 @@
       const payload = JSON.stringify({
         title, startsWhen, endsWhen, milestones,
         assigneePool,
-        allowFuture: !!allowFuture.checked,
+        resources: topResources,
         steps
       }, null, 2);
       const blob = new Blob([payload], {type:'application/json'});
@@ -489,13 +654,11 @@
     });
 
     clearAllBtn.addEventListener('click', ()=>{
-      if (confirm("Clear all steps? This cannot be undone.")){
-        steps = []; title=""; startsWhen=""; endsWhen=""; milestones=[]; assigneePool=[];
+      if (confirm("Clear all steps and resources? This cannot be undone.")){
+        steps = []; title=""; startsWhen=""; endsWhen=""; milestones=[]; assigneePool=[]; topResources=[];
         persist();
       }
     });
-
-    allowFuture.addEventListener('change', ()=>{ persist(); });
 
     // Jotform integration
     JFCustomWidget.subscribe("ready", function(formData){
@@ -505,18 +668,16 @@
 
     JFCustomWidget.subscribe("submit", function(){
       const err = validateAll();
+      const value = JSON.stringify({
+        title, startsWhen, endsWhen, milestones,
+        assigneePool, resources: topResources, steps
+      });
       if (err) {
         showErr(err);
-        JFCustomWidget.sendSubmit({ valid:false, value: JSON.stringify({
-          title, startsWhen, endsWhen, milestones,
-          assigneePool, allowFuture: !!allowFuture.checked, steps
-        }) });
+        JFCustomWidget.sendSubmit({ valid:false, value });
         return;
       }
-      JFCustomWidget.sendSubmit({ valid:true, value: JSON.stringify({
-        title, startsWhen, endsWhen, milestones,
-        assigneePool, allowFuture: !!allowFuture.checked, steps
-      }) });
+      JFCustomWidget.sendSubmit({ valid:true, value });
     });
   </script>
 </body>
