@@ -137,6 +137,8 @@
       <button id="addStepBtn" class="btn primary">Add Step</button>
       <button id="exportBtn" class="btn ghost" title="Download JSON">Download JSON</button>
       <button id="clearAllBtn" class="btn danger" title="Remove all steps">Clear All</button>
+      <button id="importBtn" class="btn ghost" title="Import a previously exported JSON">Import JSON</button>
+      <input id="importFile" type="file" accept="application/json" style="display:none" />
     </div>
     <div class="hint">Each step can branch by outcome. Choose: <b>Close Workflow</b>, <b>Restart Workflow</b>, <b>Restart Current Step</b>, or <b>Jump to Step</b> (then pick a step).</div>
 
@@ -182,6 +184,31 @@
     const emptyState = document.getElementById('emptyState');
     const statusOk = document.getElementById('statusOk');
     const statusErr = document.getElementById('statusErr');
+    const importBtn = document.getElementById('importBtn');
+    const importFile = document.getElementById('importFile');
+    
+    importBtn.addEventListener('click', ()=> importFile.click());
+    
+    importFile.addEventListener('change', async () => {
+      const file = importFile.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const obj = JSON.parse(text);
+        setStateFromPayload(obj);
+        // Clear file input so the same file can be re-imported if needed
+        importFile.value = "";
+        persistImmediate();
+      } catch (e) {
+        const statusErr = document.getElementById('statusErr');
+        if (statusErr){
+          statusErr.textContent = "Import failed: invalid JSON file.";
+          statusErr.style.display = 'block';
+          setTimeout(()=> statusErr.style.display='none', 3000);
+        }
+      }
+    });
+
 
     // Utils
     const debounce = (fn, ms=2000) => { let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),ms); }; };
@@ -289,6 +316,34 @@
       milestones = raw.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
       persist();
     });
+
+function setStateFromPayload(obj){
+      // Defensive: accept both old and new shapes
+      steps = Array.isArray(obj.steps) ? obj.steps : [];
+      assigneePool = Array.isArray(obj.assigneePool) ? obj.assigneePool : [];
+      title = obj.title || "";
+      startsWhen = obj.startsWhen || "";
+      endsWhen = obj.endsWhen || "";
+      if (Array.isArray(obj.milestones)) milestones = obj.milestones;
+      else if (obj.milestones) milestones = String(obj.milestones).split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+      // resources
+      topResources = Array.isArray(obj.resources) ? obj.resources : [];
+      topResources.forEach(r => { if (!r.id) r.id = 'r_' + Math.random().toString(36).slice(2,10); });
+    }
+
+function persistImmediate(){
+  const payload = {
+    title, startsWhen, endsWhen, milestones,
+    assigneePool,
+    resources: topResources,
+    steps
+  };
+  try { JFCustomWidget.sendData({ value: JSON.stringify(payload) }); } catch(e){}
+  render();
+  // tiny success flash
+  const ok = document.getElementById('statusOk');
+  if (ok){ ok.style.display='block'; setTimeout(()=>ok.style.display='none', 900); }
+}
 
     // Assignee pool UI
     function renderAssignees(){
@@ -539,35 +594,55 @@
     // Step resources picker + custom flow
     function renderStepResourcePicker(container, step){
       container.innerHTML = "";
-
+    
+      // Search + picker row
+      const searchRow = document.createElement('div'); searchRow.className='row';
+      const search = document.createElement('input'); search.type='text';
+      search.placeholder = 'Search resources…';
+    
       const header = document.createElement('div'); header.className='row';
       const sel = document.createElement('select');
-      sel.innerHTML = `<option value="">Select existing resource…</option>` +
-        topResources.map(r => `<option value="${r.id}">${resourceSummary(r)}</option>`).join('') +
-        `<option value="__custom__">Custom…</option>`;
       const addBtn = document.createElement('button'); addBtn.className='btn'; addBtn.textContent='Add to Step';
-
-      header.appendChild(sel); header.appendChild(addBtn);
+    
+      // Build options based on current filter
+      function buildOptions(){
+        const q = (search.value || "").toLowerCase().trim();
+        const matches = topResources.filter(r => {
+          const s = (r.name + " " + (r.type || "") + " " + (r.mode || "")).toLowerCase();
+          return !q || s.includes(q);
+        });
+        sel.innerHTML = `<option value="">Select existing resource…</option>` +
+          matches.map(r => `<option value="${r.id}">${resourceSummary(r)}</option>`).join('') +
+          `<option value="__custom__">Custom…</option>`;
+      }
+    
+      search.addEventListener('input', buildOptions);
+    
+      header.appendChild(sel);
+      header.appendChild(addBtn);
+    
+      container.appendChild(searchRow);
+      searchRow.appendChild(search);
+    
       container.appendChild(header);
-
+    
       const customWrap = document.createElement('div'); customWrap.className='section'; customWrap.style.display='none';
       container.appendChild(customWrap);
-
-      let customTemp = blankResource('form',''); // default; will rebuild on type change
-
+    
+      let customTemp = blankResource('form',''); // default
+    
       function showCustomBuilder(){
         customWrap.style.display='';
         buildCustomUI();
       }
-
       function hideCustomBuilder(){
         customWrap.style.display='none';
         customWrap.innerHTML = "";
       }
-
+    
       function buildCustomUI(){
         customWrap.innerHTML = '';
-
+    
         // type + name
         const row = document.createElement('div'); row.className='row';
         const typeSel = document.createElement('select');
@@ -576,68 +651,57 @@
           typeSel.appendChild(o);
         });
         const nameIn = document.createElement('input'); nameIn.type='text'; nameIn.placeholder='Resource name (required)';
-
-        // initialize
+    
         customTemp = blankResource('form','');
         typeSel.value = customTemp.type;
         nameIn.value = customTemp.name;
-
-        typeSel.addEventListener('change', ()=>{ customTemp = blankResource(typeSel.value, sanitizeName(nameIn.value)); renderFields(); });
-        nameIn.addEventListener('input', ()=>{ customTemp.name = sanitizeName(nameIn.value); });
-
+    
+        typeSel.addEventListener('change', ()=>{ customTemp = blankResource(typeSel.value, (nameIn.value||"").trim()); renderFields(); });
+        nameIn.addEventListener('input', ()=>{ customTemp.name = (nameIn.value||"").trim(); });
+    
         row.appendChild(typeSel); row.appendChild(nameIn);
         customWrap.appendChild(row);
-
+    
         const fields = document.createElement('div');
         customWrap.appendChild(fields);
-
-        function onChange(){ /* no-op live */ }
-
-        function renderFields(){
-          fields.innerHTML = '';
-          builderForResource(fields, customTemp, onChange);
-        }
-
+    
+        function onChange(){ /* no-op for live typing */ }
+        function renderFields(){ fields.innerHTML = ''; builderForResource(fields, customTemp, onChange); }
         renderFields();
-
-        // actions
+    
         const actions = document.createElement('div'); actions.className='row'; actions.style.justifyContent='flex-end';
         const saveBtn = document.createElement('button'); saveBtn.className='btn primary'; saveBtn.textContent='Save Resource & Add';
         const cancelBtn = document.createElement('button'); cancelBtn.className='btn'; cancelBtn.textContent='Cancel';
-
+    
         saveBtn.addEventListener('click', ()=>{
-          const nm = sanitizeName(customTemp.name);
+          const nm = (customTemp.name||"").trim();
           if (!nm){ showErr("Resource name is required."); return; }
           if (!customTemp.id) customTemp.id = newId();
-          // push to top pool
+          // add to top-level pool and link to step
           topResources.push(customTemp);
-          // link to step
           step.resources = step.resources || [];
           step.resources.push({ resourceId: customTemp.id });
           persist();
           hideCustomBuilder();
-          // refresh dropdown to include the new one
+          // refresh both picker options and the rendered list
+          buildOptions();
           renderStepResourceList(container, step);
         });
         cancelBtn.addEventListener('click', ()=>{ hideCustomBuilder(); sel.value=""; });
-
+    
         actions.appendChild(cancelBtn); actions.appendChild(saveBtn);
         customWrap.appendChild(actions);
       }
-
+    
       sel.addEventListener('change', ()=>{
-        if (sel.value === '__custom__'){
-          showCustomBuilder();
-        } else {
-          hideCustomBuilder();
-        }
+        if (sel.value === '__custom__'){ showCustomBuilder(); }
+        else { hideCustomBuilder(); }
       });
-
+    
       addBtn.addEventListener('click', ()=>{
         const val = sel.value;
         if (!val){ showErr("Choose a resource or select Custom."); return; }
         if (val === '__custom__'){ showCustomBuilder(); return; }
-        // link existing
         step.resources = step.resources || [];
         if (!step.resources.find(x=>x.resourceId===val)){
           step.resources.push({ resourceId: val });
@@ -645,7 +709,10 @@
           renderStepResourceList(container, step);
         }
       });
-
+    
+      // initial fill
+      buildOptions();
+    
       // also render the current list below
       renderStepResourceList(container, step);
     }
