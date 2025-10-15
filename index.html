@@ -235,24 +235,29 @@
             persist();
           });
 
-          // Parent action select
+          // Parent action select (patched to ensure all options render)
           const actionSelect = document.createElement('select');
           [
-            {v:ACTIONS.CLOSE, label:'Close Workflow'},
-            {v:ACTIONS.RESTART_WORKFLOW, label:'Restart Workflow'},
-            {v:ACTIONS.RESTART_CURRENT, label:'Restart Current Step'},
-            {v:ACTIONS.JUMP, label:'Jump to Step'}
+            {v:'close', label:'Close Workflow'},
+            {v:'restart_workflow', label:'Restart Workflow'},
+            {v:'restart_current', label:'Restart Current Step'},
+            {v:'jump', label:'Jump to Step'}
           ].forEach(opt=>{
             const o = document.createElement('option');
-            o.value = opt.v; o.textContent = opt.label;
+            o.value = opt.v;
+            o.textContent = opt.label;
             actionSelect.appendChild(o);
           });
-          if (!branch.action) branch.action = ACTIONS.CLOSE;
+          
+          // Normalize stored action to ensure compatibility with older saves
+          if (!branch.action) branch.action = 'close';
           actionSelect.value = branch.action;
-          actionSelect.addEventListener('change', ()=>{
+          
+          // Listen for changes
+          actionSelect.addEventListener('change', () => {
             branch.action = actionSelect.value;
             // reset next if not jump
-            if (branch.action !== ACTIONS.JUMP) branch.next = null;
+            if (branch.action !== 'jump') branch.next = null;
             persist();
             // re-render this row's jump control visibility
             syncJumpControl();
