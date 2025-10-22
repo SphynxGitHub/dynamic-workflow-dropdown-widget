@@ -129,6 +129,8 @@
         <button id="builderTabBtn" class="btn">Builder</button>
       </div>
 
+      <button id="appsTabBtn" class="btn">Apps</button>
+
       <!-- RESOURCE LIBRARY -->
       <div id="libraryWrap" class="lib-split" style="display:none">
         <div class="lib-menu" id="libMenu"></div>
@@ -162,11 +164,28 @@
       </div>
     </div>
 
+    <!-- Apps Panel -->
+    <div id="appsWrap" class="lib-split" style="display:none">
+      <div class="lib-menu">
+        <div class="row" style="margin-bottom:8px">
+          <button id="importAppsBtn" class="btn ghost">Import Apps CSV</button>
+          <input id="importAppsFile" type="file" accept=".csv" style="display:none" />
+        </div>
+        <div class="hint">CSV columns: <b>app</b>, <b>type</b> (trigger|action|search|event), <b>key</b>, <b>name</b>, <b>requiresFilter</b> (true/false), <b>notes</b></div>
+      </div>
+      <div class="lib-panel">
+        <div class="row"><input id="appsSearch" type="text" placeholder="Search apps/actions…" /></div>
+        <div id="appsList"></div>
+      </div>
+    </div>
+
     <!-- Toolbar -->
     <div class="toolbar">
       <input id="stepNameInput" type="text" placeholder="New step name (e.g., Intro Call)" />
       <button id="addStepBtn" class="btn primary">Add Step</button>
       <button id="vizBtn" class="btn ghost">Visualizer View</button>
+      <button id="settingsBtn" class="btn">Settings</button>
+      <div id="settingsPanel" class="section" style="display:none">
       <button id="exportBtn" class="btn ghost" title="Download JSON">Download JSON</button>
       <button id="importBtn" class="btn ghost" title="Import a previously exported JSON">Import JSON</button>
       <input id="importFile" type="file" accept="application/json" style="display:none" />
@@ -188,9 +207,30 @@
       <svg id="viz" viewBox="0 0 1200 520" preserveAspectRatio="xMidYMid meet" aria-label="Workflow visualization"></svg>
     </div>
 
+     <!-- Settings -->
+      <h3>Settings</h3>
+      <div class="grid2">
+        <div class="rowline">
+          <label>Zap Step Rate ($)</label>
+          <input id="zapRateInput" type="number" min="0" step="1" />
+        </div>
+      </div>
+    </div>
+
+    <div class="row" id="whoFilterRow">
+      <button class="btn ghost" id="filterAll">All</button>
+      <button class="btn" id="filterTeam">Team</button>
+      <button class="btn" id="filterAuto">Automated</button>
+    </div>
+
     <!-- Steps -->
     <div id="cards" class="grid" aria-live="polite"></div>
     <div id="emptyState" class="empty" style="display:none;">No steps yet. Add your first step above.</div>
+  </div>
+
+  <div id="rollupPanel" class="section">
+    <h3>Cost Roll-Up</h3>
+    <div id="rollupSummary" class="resgrid"></div>
   </div>
 
   <script>
@@ -204,6 +244,9 @@
     let topResources = []; // [{id, type, name, mode?, link?, fileName?, fileData?, email?, automation?, scope?... }]
     let libFilter = 'all';
     let libQuery = '';
+    let apps = []; // [{ app:'Calendly', actions:[{type:'trigger', key:'invitee.created', name:'Invitee Created', requiresFilter:true, notes:''}], zapStepRateOverride?:number }]
+    let zapStepRate = 80; // default price per Zap step
+
 
     // DOM refs
     const wfTitle = document.getElementById('wfTitle');
@@ -258,6 +301,39 @@
       fr.onload=()=>resolve(fr.result);
       fr.onerror=reject;
       fr.readAsDataURL(file);
+    });
+
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const zapRateInput = document.getElementById('zapRateInput');
+
+    const appsTabBtn = document.getElementById('appsTabBtn');
+    const appsWrap = document.getElementById('appsWrap');
+    const appsSearch = document.getElementById('appsSearch');
+    const importAppsBtn = document.getElementById('importAppsBtn');
+    const importAppsFile = document.getElementById('importAppsFile');
+    
+    function setTab(mode){
+      if (mode==='library'){ libraryWrap.style.display = ''; builderWrap.style.display='none'; appsWrap.style.display='none'; }
+      else if (mode==='builder'){ libraryWrap.style.display = 'none'; builderWrap.style.display=''; appsWrap.style.display='none'; }
+      else if (mode==='apps'){ libraryWrap.style.display = 'none'; builderWrap.style.display='none'; appsWrap.style.display=''; }
+      libTabBtn.classList.toggle('ghost', mode!=='library');
+      builderTabBtn.classList.toggle('ghost', mode!=='builder');
+      appsTabBtn.classList.toggle('ghost', mode!=='apps');
+      renderTopResources();
+      renderApps();
+    }
+    appsTabBtn.addEventListener('click', ()=> setTab('apps'));
+
+    settingsBtn.addEventListener('click', ()=>{
+      const show = settingsPanel.style.display==='none';
+      settingsPanel.style.display = show ? '' : 'none';
+      zapRateInput.value = zapStepRate;
+    });
+    
+    zapRateInput.addEventListener('input', ()=>{
+      const v = Number(zapRateInput.value || 0);
+      if (!Number.isNaN(v)) { zapStepRate = v; persist(); renderRollup(); }
     });
 
     // Import/Export helpers
@@ -1386,6 +1462,241 @@
       }
     });
 
+    function parseCSV(text){
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const [hdr, ...rows] = lines;
+      const cols = hdr.split(',').map(s=>s.trim().toLowerCase());
+      function cell(row, key){ const i = cols.indexOf(key); return i>=0 ? (row.split(',')[i]||'').trim() : ''; }
+      const group = {};
+      rows.forEach(line=>{
+        const row = line;
+        const app = cell(row,'app');
+        if (!app) return;
+        const type = (cell(row,'type')||'').toLowerCase();
+        const key = cell(row,'key');
+        const name = cell(row,'name');
+        const rf = (cell(row,'requiresfilter')||'').toLowerCase();
+        const requiresFilter = rf==='true' || rf==='1' || rf==='yes';
+        const notes = cell(row,'notes');
+        group[app] = group[app] || [];
+        group[app].push({ type, key, name, requiresFilter, notes });
+      });
+      const arr = Object.keys(group).sort().map(app=>{
+        return { app, actions: group[app] };
+      });
+      return arr;
+    }
+    
+    function renderApps(){
+      const q = (appsSearch.value||'').toLowerCase();
+      const list = document.getElementById('appsList'); list.innerHTML='';
+      if (!apps.length){
+        const empty = document.createElement('div'); empty.className='mini'; empty.textContent='No apps loaded. Import a CSV.';
+        list.appendChild(empty); return;
+      }
+      apps.forEach(a=>{
+        const matches = !q || a.app.toLowerCase().includes(q) || a.actions.some(x => (x.name||'').toLowerCase().includes(q) || (x.key||'').toLowerCase().includes(q));
+        if (!matches) return;
+        const det = document.createElement('details'); det.className='resource';
+        const sum = document.createElement('summary'); sum.textContent = `${a.app} (${a.actions.length})`;
+        det.appendChild(sum);
+        const inner = document.createElement('div');
+        a.actions.forEach(x=>{
+          const row = document.createElement('div'); row.className='resrow';
+          const l = document.createElement('label'); l.textContent = x.type.toUpperCase();
+          const v = document.createElement('div'); v.className='mini';
+          v.textContent = `${x.name||x.key||'(unnamed)'}${x.requiresFilter?' • requires filter':''}${x.notes?` • ${x.notes}`:''}`;
+          row.appendChild(l); row.appendChild(v); inner.appendChild(row);
+        });
+        det.appendChild(inner);
+        list.appendChild(det);
+      });
+    }
+    appsSearch.addEventListener('input', renderApps);
+    
+    importAppsBtn.addEventListener('click', ()=> importAppsFile.click());
+    importAppsFile.addEventListener('change', async ()=>{
+      const f = importAppsFile.files?.[0]; if(!f) return;
+      const text = await f.text();
+      try {
+        const parsed = parseCSV(text);
+        apps = parsed;
+        persist(); renderApps();
+        importAppsFile.value="";
+      } catch(e){ showErr('Could not parse CSV. Check headers.'); }
+    });
+    
+    // App + Action + Zap step count (auto hints)
+    const appRow = document.createElement('div'); appRow.className='rowline';
+    const appLbl = document.createElement('label'); appLbl.textContent='App'; appLbl.className='small';
+    
+    const appSel = document.createElement('select');
+    appSel.innerHTML = `<option value="">(none)</option>` + apps.map(a=>`<option value="${a.app}">${a.app}</option>`).join('');
+    appSel.value = step.app || "";
+    appSel.addEventListener('change', ()=>{
+      step.app = appSel.value || "";
+      if (step.app && step.assigneeType!=='automated'){ step.assigneeType='automated'; }
+      // reset action and zap steps
+      step.appActionKey = ""; step.appActionType=""; step.zapSteps = undefined;
+      persist(); render();
+    });
+    
+    appRow.appendChild(appLbl); appRow.appendChild(appSel);
+    
+    // If app selected, show action + computed zap steps
+    if (step.app){
+      const actRow = document.createElement('div'); actRow.className='rowline';
+      const actLbl = document.createElement('label'); actLbl.textContent='Action/Trigger'; actLbl.className='small';
+      const actSel = document.createElement('select');
+    
+      const appObj = apps.find(a=>a.app===step.app);
+      const acts = appObj ? appObj.actions : [];
+      actSel.innerHTML = `<option value="">Select…</option>` + acts.map(x=>`<option value="${x.key}">${x.type.toUpperCase()}: ${x.name||x.key}</option>`).join('');
+      actSel.value = step.appActionKey || "";
+      actSel.addEventListener('change', ()=>{
+        step.appActionKey = actSel.value || "";
+        const pick = acts.find(x=>x.key===step.appActionKey);
+        step.appActionType = pick?.type || "";
+        // compute zap steps: 1 base + 1 if requiresFilter
+        const base = pick ? 1 + (pick.requiresFilter?1:0) : 0;
+        if (step.zapSteps == null) step.zapSteps = base; // allow override later
+        step.requiresFilter = !!pick?.requiresFilter;
+        persist(); renderRollup();
+      });
+      actRow.appendChild(actLbl); actRow.appendChild(actSel);
+    
+      // Zap steps editable
+      const zRow = document.createElement('div'); zRow.className='rowline';
+      const zLbl = document.createElement('label'); zLbl.textContent='Zap Steps'; zLbl.className='small';
+      const zIn = document.createElement('input'); zIn.type='number'; zIn.min='0'; zIn.step='1';
+      const computedBase = (()=>{ const p=(acts.find(x=>x.key===step.appActionKey)); return p?1+(p.requiresFilter?1:0):0 })();
+      if (step.zapSteps == null) step.zapSteps = computedBase;
+      zIn.value = step.zapSteps || 0;
+      zIn.addEventListener('input', ()=>{ step.zapSteps = Number(zIn.value||0); persist(); renderRollup(); });
+      zRow.appendChild(zLbl); zRow.appendChild(zIn);
+    
+      metaWrap.appendChild(appRow);
+      metaWrap.appendChild(actRow);
+      metaWrap.appendChild(zRow);
+    
+      if (step.requiresFilter){
+        const hint = document.createElement('div'); hint.className='hint';
+        hint.textContent = 'This action/trigger needs an extra Filter step (added to Zap Steps).';
+        metaWrap.appendChild(hint);
+      }
+    } else {
+      metaWrap.appendChild(appRow);
+    }
+    
+    function computeTotals(){
+      // Resource totals (proposal-eligible)
+      let resourcesTotal = 0, hoursTotal = 0;
+      topResources.forEach(r=>{
+        const s = r.scope || {};
+        if (s.includeInProposal){
+          resourcesTotal += Number(s.price || 0);
+          hoursTotal += Number(s.effortHours || 0);
+        }
+      });
+      // Automations (Zap steps)
+      let zapStepsTotal = 0;
+      steps.forEach(s=>{
+        zapStepsTotal += Number(s.zapSteps || 0);
+      });
+      const automationsTotal = zapStepsTotal * zapStepRate;
+      // by step breakdown
+      const perStep = steps.map(s => ({
+        name: s.name,
+        zapSteps: Number(s.zapSteps||0),
+        zapCost: Number(s.zapSteps||0) * zapStepRate,
+      }));
+      return { resourcesTotal, hoursTotal, zapStepsTotal, automationsTotal, perStep };
+    }
+    
+    function renderRollup(){
+      const box = document.getElementById('rollupSummary'); if (!box) return;
+      const t = computeTotals();
+      box.innerHTML = "";
+    
+      const mk = (lab, val) => {
+        const row = document.createElement('div'); row.className='resrow';
+        const l = document.createElement('label'); l.textContent=lab;
+        const v = document.createElement('div'); v.className='mini'; v.textContent = val;
+        row.appendChild(l); row.appendChild(v); box.appendChild(row);
+      };
+      mk('Proposal Resources Total', `$${t.resourcesTotal.toFixed(2)}`);
+      mk('Estimated Effort (hrs)', t.hoursTotal.toFixed(2));
+      mk('Zap Steps (count)', String(t.zapStepsTotal));
+      mk('Automation Total', `$${t.automationsTotal.toFixed(2)}`);
+      mk('Grand Total', `$${(t.resourcesTotal + t.automationsTotal).toFixed(2)}`);
+    
+      // Breakdown
+      const det = document.createElement('details'); det.className='resource'; det.open=false;
+      const sum = document.createElement('summary'); sum.textContent = 'Per Step Breakdown';
+      det.appendChild(sum);
+      const inner = document.createElement('div');
+      t.perStep.forEach(p=>{
+        const row = document.createElement('div'); row.className='resrow';
+        const l = document.createElement('label'); l.textContent = p.name;
+        const v = document.createElement('div'); v.className='mini';
+        v.textContent = `Zap Steps: ${p.zapSteps} • Cost: $${p.zapCost.toFixed(2)}`;
+        row.appendChild(l); row.appendChild(v); inner.appendChild(row);
+      });
+      det.appendChild(inner);
+      box.appendChild(det);
+    }
+
+    card.setAttribute('draggable','true');
+    card.addEventListener('dragstart', (e)=>{ e.dataTransfer.setData('text/plain', step.name); card.style.opacity=.5; });
+    card.addEventListener('dragend', ()=>{ card.style.opacity=1; });
+    
+    card.addEventListener('dragover', (e)=>{ e.preventDefault(); card.style.outline='2px dashed #cfe0ff'; });
+    card.addEventListener('dragleave', ()=>{ card.style.outline='none'; });
+    card.addEventListener('drop', (e)=>{
+      e.preventDefault(); card.style.outline='none';
+      const name = e.dataTransfer.getData('text/plain');
+      const fromIdx = steps.findIndex(s=>s.name===name);
+      const toIdx = idx; // drop onto this card
+      if (fromIdx<0 || toIdx<0 || fromIdx===toIdx) return;
+      const [moved] = steps.splice(fromIdx,1);
+      steps.splice(toIdx,0,moved);
+      persist(); renderViz();
+    });
+
+    const isAuto = s.assigneeType==='automated';
+    r.setAttribute('fill', isAuto ? '#dcfce7' : '#e8f0ff');      // green for automated, blue for team
+    r.setAttribute('stroke', isAuto ? '#22c55e' : '#3b82f6');
+
+    let whoFilter = 'all'; // all|team|auto
+    const filterAll = document.getElementById('filterAll');
+    const filterTeam = document.getElementById('filterTeam');
+    const filterAuto = document.getElementById('filterAuto');
+    
+    function render(){
+      // ...existing...
+      const filtered = steps.filter(s=>{
+        if (whoFilter==='team') return s.assigneeType!=='automated';
+        if (whoFilter==='auto') return s.assigneeType==='automated';
+        return true;
+      });
+      // render filtered instead of steps
+      if (!filtered.length){ cards.innerHTML=""; emptyState.style.display=""; return; }
+      emptyState.style.display="none"; cards.innerHTML="";
+      filtered.forEach((step, idx)=>{ /* build cards as before (use idx from filtered) */ });
+    }
+    
+    filterAll.addEventListener('click', ()=>{ whoFilter='all'; render(); renderViz(); });
+    filterTeam.addEventListener('click', ()=>{ whoFilter='team'; render(); renderViz(); });
+    filterAuto.addEventListener('click', ()=>{ whoFilter='auto'; render(); renderViz(); });
+
+    const payload = {
+      title, startsWhen, endsWhen, milestones,
+      assigneePool, resources: topResources, steps,
+      apps, zapStepRate
+    };
+
+    if (Array.isArray(obj.apps)) apps = obj.apps;
+    if (typeof obj.zapStepRate === 'number') zapStepRate = obj.zapStepRate;
     // Jotform integration
     JFCustomWidget.subscribe("ready", function(formData){
       setTab('library'); // default to Library first
