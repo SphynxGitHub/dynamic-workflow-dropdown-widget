@@ -2,16 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Branching Workflow Builder</title>
+  <title>Sphynx Workflow Builder</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Jotform API (safe shim in app.js handles standalone mode) -->
+  <!-- Jotform Widget API (safe if not in Jotform too) -->
   <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
-
   <style>
     :root{
       --bg:#fafafa; --card:#ffffff; --muted:#6a6a6a; --line:#e5e5e5;
       --accent:#3b82f6; --accent-ghost:#e8f0ff; --danger:#e11d48; --radius:14px;
-      --chip:#eef2ff; --chip-text:#1e3a8a; --chip-border:#c7d2fe; --ink:#0f172a;
+      --chip:#eef2ff; --chip-text:#1e3a8a; --chip-border:#c7d2fe;
     }
     html,body{margin:0;padding:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111}
     .wrap{padding:12px;max-width:1200px;margin:0 auto}
@@ -35,26 +34,20 @@
     .chip button{border:none;background:none;cursor:pointer;color:#6b7280}
     .add-assignee{display:flex;gap:8px;margin-top:8px}
     .add-assignee input{flex:1 1 auto}
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
     .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:0 1px 0 rgba(0,0,0,.02);position:relative}
     .card header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
     .card header input{flex:1 1 auto;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-weight:600;background:#fff}
     .iconbtn{border:none;background:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
     .iconbtn.red{width:34px;height:34px;border-radius:50%;background:var(--danger);color:#fff}
     .iconbtn.red svg{width:18px;height:18px}
-    .meta{display:grid;grid-template-columns:1fr;gap:8px;margin:6px 0 10px}
-    .meta .rowline{grid-template-columns:160px 1fr}
-    .tag{font-size:12px;color:var(--muted)}
+    .tag{font-size:12px;color:#64748b;margin:6px 0}
     .row{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
-    .row input[type="text"], .row select, .row input[list]{flex:1 1 40%;min-width:160px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}
-    .row .btn{padding:8px 10px}
     .divider{height:1px;background:var(--line);margin:10px 0}
-    .footer{display:flex;gap:8px;justify-content:flex-end}
     .empty{border:1px dashed var(--line);border-radius:var(--radius);padding:16px;text-align:center;color:#6a6a6a;background:#fff}
     .mapline{font-size:12px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-top:6px;white-space:pre-wrap}
     .error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
     .ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
-    label.small{font-size:12px;color:#475569}
 
     /* resources */
     details.resource{border:1px solid var(--line);border-radius:10px;padding:8px;margin:8px 0;background:#fff}
@@ -62,121 +55,51 @@
     .resgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:8px}
     .resrow{display:grid;grid-template-columns:160px 1fr;gap:8px;align-items:center}
     .resrow label{font-size:12px;color:#475569}
-    .reshead{display:flex;align-items:center;gap:8px}
-    .res-del{margin-left:auto}
     .mini{font-size:12px;color:#6b7280}
-    .radio-line{display:flex;gap:16px;align-items:center}
-
-    /* resource library split */
-    .lib-split{display:grid;grid-template-columns:220px 1fr;gap:12px;margin-top:8px}
-    .lib-menu{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px}
-    .lib-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:10px;cursor:pointer;font-size:14px;color:#0f172a}
-    .lib-item.active{background:var(--accent-ghost);color:#274c9f}
-    .lib-count{font-size:12px;color:#64748b}
-    .lib-panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px}
-
-    /* visualizer */
-    #vizWrap{display:none;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px}
-    #viz{width:100%;height:520px;border:1px dashed var(--line);border-radius:12px;background:#f8fafc}
-    .viz-legend{display:flex;gap:10px;font-size:12px;color:#475569;margin:6px 0}
-    .legend-chip{display:inline-flex;align-items:center;gap:6px}
-    .legend-dot{width:10px;height:10px;border-radius:50%}
+    /* top nav */
+    .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+    .tab{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer}
+    .tab.active{background:var(--accent-ghost);border-color:#cfe0ff;color:#274c9f}
   </style>
 </head>
 <body>
   <div class="wrap">
-
-    <!-- Top-level workflow info -->
-    <div class="section">
-      <h3>Workflow Info</h3>
-      <div class="grid2">
-        <div class="rowline">
-          <label>Zap Step Rate ($)</label>
-          <input id="zapRateInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Email Step Rate ($)</label>
-          <input id="emailStepRateInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Scheduler Rate ($ / page|event|member)</label>
-          <input id="schedulerRateInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Other Hourly Rate ($)</label>
-          <input id="otherHourlyRateInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Form Rate: per Question ($)</label>
-          <input id="formRateQuestionInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Form Rate: per Condition ($)</label>
-          <input id="formRateConditionInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Form Rate: per PDF ($)</label>
-          <input id="formRatePdfInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Form Rate: per Email ($)</label>
-          <input id="formRateEmailInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Form Rate: per Signature ($)</label>
-          <input id="formRateSignatureInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline">
-          <label>Form Rate: per Add-on ($)</label>
-          <input id="formRateAddonInput" type="number" min="0" step="1" />
-        </div>
-        <div class="rowline" style="grid-column:1/-1">
-          <label>ClickUp Webhook URL</label>
-          <input id="clickupWebhookInput" type="text" placeholder="https://script.google.com/macros/s/.../exec" />
-        </div>
-      </div>
-      <div class="row" style="justify-content:flex-end;margin-top:8px">
-        <button id="exportScopingCsvBtn" class="btn ghost">Download Scoping CSV</button>
-        <button id="sendToClickupBtn" class="btn primary">Send Approved to ClickUp</button>
-      </div>
+    <div class="tabs">
+      <button id="tabBuilder" class="tab active">Builder</button>
+      <button id="tabLibrary" class="tab">Resource Library</button>
+      <button id="tabApps" class="tab">Apps</button>
+      <button id="tabSettings" class="tab">Settings</button>
     </div>
 
-    <!-- Global assignee pool -->
-    <div class="section">
-      <h3>Possible Assignees</h3>
-      <div class="hint">Add names once. Steps can then assign to a “Team Member” from this list, or mark as “Automated”.</div>
-      <div class="chips" id="assigneeChips"></div>
-      <div class="add-assignee">
-        <input id="assigneeInput" type="text" placeholder="e.g., Arielle, Operations, Chad" />
-        <button id="addAssigneeBtn" class="btn">Add</button>
-      </div>
-    </div>
-
-    <!-- Top-level resources -->
-    <div class="section">
-      <h3>Resources</h3>
-      <div class="hint">Use the Library to browse by type, or create new items with the Builder. Each resource supports detailed scoping & pricing.</div>
-
-      <!-- Library/Builder/Apps Tabs -->
-      <div class="row" style="margin-bottom:8px">
-        <button id="libTabBtn" class="btn ghost">Library</button>
-        <button id="builderTabBtn" class="btn">Builder</button>
-        <button id="appsTabBtn" class="btn">Apps</button>
-      </div>
-
-      <!-- RESOURCE LIBRARY -->
-      <div id="libraryWrap" class="lib-split" style="display:none">
-        <div class="lib-menu" id="libMenu"></div>
-        <div class="lib-panel">
-          <div id="libSearchRow" class="row" style="margin-bottom:6px">
-            <input id="libSearch" type="text" placeholder="Search resources…" />
-          </div>
-          <div id="topResources"></div>
+    <!-- Pane: Builder -->
+    <div id="paneBuilder">
+      <!-- Top-level workflow info -->
+      <div class="section">
+        <h3>Workflow Info</h3>
+        <div class="grid2">
+          <div class="rowline"><label>Workflow Title</label><input id="wfTitle" type="text" placeholder="e.g., New Client Onboarding" /></div>
+          <div class="rowline"><label>Workflow Starts When</label><input id="wfStarts" type="text" placeholder="e.g., Contract signed" /></div>
+          <div class="rowline"><label>Workflow Ends When</label><input id="wfEnds" type="text" placeholder="e.g., Welcome email sent" /></div>
+          <div class="rowline" style="grid-column:1/-1"><label>Milestone(s)</label><textarea id="wfMilestones" placeholder="One per line or comma-separated"></textarea></div>
         </div>
       </div>
 
-      <!-- BUILDER -->
-      <div id="builderWrap">
+      <!-- Assignee pool -->
+      <div class="section">
+        <h3>Possible Assignees</h3>
+        <div class="hint">Steps can assign to a “Team Member” from this list, or mark as “Automated”.</div>
+        <div class="chips" id="assigneeChips"></div>
+        <div class="add-assignee">
+          <input id="assigneeInput" type="text" placeholder="e.g., Arielle, Operations, Chad" />
+          <button id="addAssigneeBtn" class="btn">Add</button>
+        </div>
+      </div>
+
+      <!-- Top-level resources -->
+      <div class="section">
+        <h3>Resources (Global)</h3>
+        <div class="hint">Attach forms, email templates, automations, or other docs/links used across the workflow.</div>
+        <div id="topResources"></div>
         <div class="row" style="margin-top:8px">
           <select id="topResType">
             <option value="form">Form</option>
@@ -186,87 +109,88 @@
           </select>
           <input id="topResName" type="text" placeholder="Resource name (required)" />
         </div>
-
-        <div id="topResBuilder" class="section" style="padding:10px;margin-top:8px">
-          <!-- content injected by JS -->
-        </div>
-
-        <div class="row" style="justify-content:flex-end">
-          <button id="addTopRes" class="btn">Add Resource</button>
-        </div>
+        <div id="topResBuilder" class="section" style="padding:10px;margin-top:8px"></div>
+        <div class="row" style="justify-content:flex-end"><button id="addTopRes" class="btn">Add Resource</button></div>
       </div>
 
-      <!-- APPS -->
-      <div id="appsWrap" class="lib-split" style="display:none">
-        <div class="lib-menu">
-          <div class="row" style="margin-bottom:8px">
-            <button id="importAppsBtn" class="btn ghost">Import Apps CSV</button>
-            <input id="importAppsFile" type="file" accept=".csv" style="display:none" />
-          </div>
-          <div class="hint">CSV columns: <b>app</b>, <b>type</b> (trigger|action|search|event), <b>key</b>, <b>name</b>, <b>requiresFilter</b> (true/false), <b>notes</b></div>
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <input id="stepNameInput" type="text" placeholder="New step name (e.g., Intro Call)" />
+        <button id="addStepBtn" class="btn primary">Add Step</button>
+        <button id="exportBtn" class="btn ghost">Download JSON</button>
+        <button id="importBtn" class="btn ghost">Import JSON</button>
+        <input id="importFile" type="file" accept="application/json" style="display:none" />
+        <button id="clearAllBtn" class="btn danger">Clear All</button>
+      </div>
+      <div class="hint">Outcomes: <b>Close Workflow</b>, <b>Restart Workflow</b>, <b>Restart Current Step</b>, <b>Jump to Step</b> (choose target).</div>
+
+      <div id="statusOk" class="ok">Saved.</div>
+      <div id="statusErr" class="error"></div>
+
+      <!-- Steps -->
+      <div id="cards" class="grid" aria-live="polite"></div>
+      <div id="emptyState" class="empty" style="display:none;">No steps yet. Add your first step above.</div>
+    </div>
+
+    <!-- Pane: Resource Library -->
+    <div id="paneLibrary" style="display:none">
+      <div class="section">
+        <h3>Resource Library</h3>
+        <div id="libraryFilters" class="row">
+          <button class="btn" data-libfilter="">All</button>
+          <button class="btn" data-libfilter="form">Forms</button>
+          <button class="btn" data-libfilter="email">Email Templates</button>
+          <button class="btn" data-libfilter="automation">Automation</button>
+          <button class="btn" data-libfilter="other">Other</button>
         </div>
-        <div class="lib-panel">
-          <div class="row"><input id="appsSearch" type="text" placeholder="Search apps/actions…" /></div>
-          <div id="appsList"></div>
-        </div>
+        <div id="libraryList"></div>
+      </div>
+      <div class="section">
+        <h3>Proposal / Scope Roll-up</h3>
+        <div id="rollupBox"></div>
       </div>
     </div>
 
-    <!-- Toolbar -->
-    <div class="toolbar">
-      <input id="stepNameInput" type="text" placeholder="New step name (e.g., Intro Call)" />
-      <button id="addStepBtn" class="btn primary">Add Step</button>
-      <button id="vizBtn" class="btn ghost">Visualizer View</button>
-      <button id="settingsBtn" class="btn">Settings</button>
-      <button id="exportBtn" class="btn ghost" title="Download JSON">Download JSON</button>
-      <button id="importBtn" class="btn ghost" title="Import a previously exported JSON">Import JSON</button>
-      <input id="importFile" type="file" accept="application/json" style="display:none" />
-      <button id="clearAllBtn" class="btn danger" title="Remove all steps">Clear All</button>
-    </div>
-    <div class="row" id="whoFilterRow">
-      <button class="btn ghost" id="filterAll">All</button>
-      <button class="btn" id="filterTeam">Team</button>
-      <button class="btn" id="filterAuto">Automated</button>
-    </div>
-    <div class="hint">Each step can branch by outcome. Choose: <b>Close Workflow</b>, <b>Restart Workflow</b>, <b>Restart Current Step</b>, or <b>Jump to Step</b> (then pick a step).</div>
-
-    <div id="statusOk" class="ok">Saved.</div>
-    <div id="statusErr" class="error"></div>
-
-    <!-- Visualizer -->
-    <div id="vizWrap" class="section">
-      <div class="viz-legend">
-        <span class="legend-chip"><span class="legend-dot" style="background:#3b82f6"></span> Team Step</span>
-        <span class="legend-chip"><span class="legend-dot" style="background:#22c55e"></span> Automated Step</span>
-        <span class="legend-chip"><span class="legend-dot" style="background:#f97316"></span> Restart</span>
-        <span class="legend-chip"><span class="legend-dot" style="background:#ef4444"></span> Close</span>
+    <!-- Pane: Apps -->
+    <div id="paneApps" style="display:none">
+      <div class="section">
+        <h3>Apps Library</h3>
+        <div class="hint">Import your Zapier Triggers/Actions CSV (normalized headers ok). This feeds App/Type/Event pickers.</div>
+        <div class="row">
+          <input id="appsCsvInput" type="file" accept=".csv" />
+          <button id="clearAppsBtn" class="btn danger">Clear Apps</button>
+        </div>
+        <div id="appsPreview" class="mini"></div>
       </div>
-      <svg id="viz" viewBox="0 0 1200 520" preserveAspectRatio="xMidYMid meet" aria-label="Workflow visualization"></svg>
     </div>
 
-    <!-- Steps -->
-    <div id="cards" class="grid" aria-live="polite"></div>
-    <div id="emptyState" class="empty" style="display:none;">No steps yet. Add your first step above.</div>
+    <!-- Pane: Settings -->
+    <div id="paneSettings" style="display:none">
+      <div class="section">
+        <h3>Rates & Webhook</h3>
+        <div class="grid2">
+          <div class="rowline"><label>Zap Step Rate ($)</label><input id="zapRateInput" type="number" min="0" step="1" /></div>
+          <div class="rowline"><label>Email Step Rate ($)</label><input id="emailStepRateInput" type="number" min="0" step="1" /></div>
+          <div class="rowline"><label>Scheduler Rate ($/page|event|member)</label><input id="schedulerRateInput" type="number" min="0" step="1" /></div>
+          <div class="rowline"><label>Other Hourly Rate ($)</label><input id="otherHourlyRateInput" type="number" min="0" step="1" /></div>
 
-    <!-- Roll-up -->
-    <div id="rollupPanel" class="section">
-      <h3>Cost Roll-Up</h3>
-      <div id="rollupSummary" class="resgrid"></div>
-    </div>
+          <div class="rowline"><label>Form Rate: per Question ($)</label><input id="formRateQuestionInput" type="number" min="0" step="1" /></div>
+          <div class="rowline"><label>Form Rate: per Condition ($)</label><input id="formRateConditionInput" type="number" min="0" step="1" /></div>
+          <div class="rowline"><label>Form Rate: per PDF ($)</label><input id="formRatePdfInput" type="number" min="0" step="1" /></div>
+          <div class="rowline"><label>Form Rate: per Email ($)</label><input id="formRateEmailInput" type="number" min="0" step="1" /></div>
+          <div class="rowline"><label>Form Rate: per Signature ($)</label><input id="formRateSignatureInput" type="number" min="0" step="1" /></div>
+          <div class="rowline"><label>Form Rate: per Add-on ($)</label><input id="formRateAddonInput" type="number" min="0" step="1" /></div>
 
-    <!-- Settings -->
-    <div id="settingsPanel" class="section" style="display:none">
-      <h3>Settings</h3>
-      <div class="grid2">
-        <div class="rowline">
-          <label>Zap Step Rate ($)</label>
-          <input id="zapRateInput" type="number" min="0" step="1" />
+          <div class="rowline" style="grid-column:1/-1"><label>ClickUp Webhook URL</label><input id="clickupWebhookInput" type="text" placeholder="https://script.google.com/macros/s/.../exec" /></div>
+        </div>
+        <div class="row" style="justify-content:flex-end;margin-top:8px">
+          <button id="exportScopingCsvBtn" class="btn ghost">Download Scoping CSV</button>
+          <button id="sendToClickupBtn" class="btn primary">Send Approved to ClickUp</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Your app logic -->
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
