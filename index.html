@@ -91,21 +91,53 @@
       <h3>Workflow Info</h3>
       <div class="grid2">
         <div class="rowline">
-          <label>Workflow Title</label>
-          <input id="wfTitle" type="text" placeholder="e.g., New Client Onboarding" />
+          <label>Zap Step Rate ($)</label>
+          <input id="zapRateInput" type="number" min="0" step="1" />
         </div>
         <div class="rowline">
-          <label>Workflow Starts When</label>
-          <input id="wfStarts" type="text" placeholder="e.g., Contract signed" />
+          <label>Email Step Rate ($)</label>
+          <input id="emailStepRateInput" type="number" min="0" step="1" />
         </div>
         <div class="rowline">
-          <label>Workflow Ends When</label>
-          <input id="wfEnds" type="text" placeholder="e.g., Accounts funded + Welcome email sent" />
+          <label>Scheduler Rate ($ / page|event|member)</label>
+          <input id="schedulerRateInput" type="number" min="0" step="1" />
+        </div>
+        <div class="rowline">
+          <label>Other Hourly Rate ($)</label>
+          <input id="otherHourlyRateInput" type="number" min="0" step="1" />
+        </div>
+        <div class="rowline">
+          <label>Form Rate: per Question ($)</label>
+          <input id="formRateQuestionInput" type="number" min="0" step="1" />
+        </div>
+        <div class="rowline">
+          <label>Form Rate: per Condition ($)</label>
+          <input id="formRateConditionInput" type="number" min="0" step="1" />
+        </div>
+        <div class="rowline">
+          <label>Form Rate: per PDF ($)</label>
+          <input id="formRatePdfInput" type="number" min="0" step="1" />
+        </div>
+        <div class="rowline">
+          <label>Form Rate: per Email ($)</label>
+          <input id="formRateEmailInput" type="number" min="0" step="1" />
+        </div>
+        <div class="rowline">
+          <label>Form Rate: per Signature ($)</label>
+          <input id="formRateSignatureInput" type="number" min="0" step="1" />
+        </div>
+        <div class="rowline">
+          <label>Form Rate: per Add-on ($)</label>
+          <input id="formRateAddonInput" type="number" min="0" step="1" />
         </div>
         <div class="rowline" style="grid-column:1/-1">
-          <label>Milestone(s)</label>
-          <textarea id="wfMilestones" placeholder="One per line or comma-separated"></textarea>
+          <label>ClickUp Webhook URL</label>
+          <input id="clickupWebhookInput" type="text" placeholder="https://script.google.com/macros/s/.../exec" />
         </div>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:8px">
+        <button id="exportScopingCsvBtn" class="btn ghost">Download Scoping CSV</button>
+        <button id="sendToClickupBtn" class="btn primary">Send Approved to ClickUp</button>
       </div>
     </div>
 
