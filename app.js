@@ -32,8 +32,25 @@ let topResources = []; // [{id,type,name,mode?,link?,fileName?,fileData?, email?
 let libFilter = 'all';
 let libQuery = '';
 let apps = []; // [{ app:'Calendly', actions:[{type:'trigger', key, name, requiresFilter, notes}] }]
-let zapStepRate = 80;
 let whoFilter = 'all'; // 'all'|'team'|'auto'
+
+// Pricing defaults (you can change in Settings)
+let zapStepRate = 80;
+let emailStepRate = 80;
+let schedulerRate = 125;
+let otherHourlyRate = 300;
+// Forms component rates
+let formRate = {
+  question: 0,   // supply later if you want a nonzero default
+  condition: 0,
+  pdf: 0,
+  email: 0,
+  signature: 0,
+  addon: 0
+};
+// Settings
+let clickupWebhookUrl = "";
+
 
 /***********************
  * 2) DOM references
@@ -45,6 +62,105 @@ const wfTitle = $('wfTitle'), wfStarts = $('wfStarts'), wfEnds = $('wfEnds'), wf
 
 // assignees
 const chips = $('assigneeChips'), assigneeInput = $('assigneeInput'), addAssigneeBtn = $('addAssigneeBtn');
+
+// Outline: Stage, Category, Item Title
+const stRow = document.createElement('div'); stRow.className='rowline';
+stRow.innerHTML = `<label class="small">Stage / Workflow Name</label>`;
+const stIn = document.createElement('input'); stIn.type='text'; stIn.value=step.stage||""; stIn.placeholder='e.g., Discovery';
+stIn.addEventListener('input', ()=>{ step.stage = stIn.value; persist(); });
+stRow.appendChild(stIn); metaWrap.appendChild(stRow);
+
+const catRow = document.createElement('div'); catRow.className='rowline';
+catRow.innerHTML = `<label class="small">Category</label>`;
+const catSel = document.createElement('select');
+["","Automation","Forms","Email Marketing Campaigns","Scheduler","Other"].forEach(v=>{
+  const o=document.createElement('option'); o.value=v; o.textContent = v || "(none)"; catSel.appendChild(o);
+});
+catSel.value = step.category||"";
+catSel.addEventListener('change', ()=>{ step.category = catSel.value; persist(); renderRollup(); });
+catRow.appendChild(catSel); metaWrap.appendChild(catRow);
+
+const itemRow = document.createElement('div'); itemRow.className='rowline';
+itemRow.innerHTML = `<label class="small">Item (Title)</label>`;
+const itemIn = document.createElement('input'); itemIn.type='text'; itemIn.value=step.itemTitle||""; itemIn.placeholder='Human-readable item name';
+itemIn.addEventListener('input', ()=>{ step.itemTitle = itemIn.value; persist(); });
+itemRow.appendChild(itemIn); metaWrap.appendChild(itemRow);
+
+// Additional Details + Fields
+const addRow = document.createElement('div'); addRow.className='rowline';
+addRow.innerHTML = `<label class="small">Additional Details</label>`;
+const addIn = document.createElement('textarea'); addIn.value=step.additionalDetails||"";
+addIn.addEventListener('input', ()=>{ step.additionalDetails = addIn.value; persist(); });
+addRow.appendChild(addIn); metaWrap.appendChild(addRow);
+
+const fldRow = document.createElement('div'); fldRow.className='rowline';
+fldRow.innerHTML = `<label class="small">Fields (free entry)</label>`;
+const fldIn = document.createElement('textarea'); fldIn.value=step.fieldsNote||"";
+fldIn.addEventListener('input', ()=>{ step.fieldsNote = fldIn.value; persist(); });
+fldRow.appendChild(fldIn); metaWrap.appendChild(fldRow);
+
+// Docs/Login/Refs/Testing Checklist
+const mkText = (lab, key, ph='')=>{
+  const r=document.createElement('div'); r.className='rowline';
+  const l=document.createElement('label'); l.textContent=lab; l.className='small';
+  const t=document.createElement('textarea'); t.placeholder=ph; t.value=step[key]||"";
+  t.addEventListener('input', ()=>{ step[key]=t.value; persist(); });
+  r.appendChild(l); r.appendChild(t); metaWrap.appendChild(r);
+};
+mkText('Documents Needed','docsNeeded','One per line…');
+mkText('Logins','logins','System → who has access?');
+mkText('References','references','Links, screenshots…');
+mkText('Testing Checklist','testingChecklist','Checklist notes…');
+
+// Status + Responsible
+const sRow = document.createElement('div'); sRow.className='rowline';
+sRow.innerHTML = `<label class="small">Status</label>`;
+const sSel = document.createElement('select');
+['Do Now','Do Later',"Don't Do",'Done'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sSel.appendChild(o); });
+sSel.value = step.status || 'Do Now';
+sSel.addEventListener('change', ()=>{ step.status = sSel.value; persist(); renderRollup(); });
+sRow.appendChild(sSel); metaWrap.appendChild(sRow);
+
+const rRow = document.createElement('div'); rRow.className='rowline';
+rRow.innerHTML = `<label class="small">Responsible</label>`;
+const rSel = document.createElement('select');
+['Client','Sphynx Team','Joint'].forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; rSel.appendChild(o); });
+rSel.value = step.responsible || 'Sphynx Team';
+rSel.addEventListener('change', ()=>{ step.responsible = rSel.value; persist(); renderRollup(); });
+rRow.appendChild(rSel); metaWrap.appendChild(rRow);
+
+// Category-specific inputs
+if (step.category === 'Forms'){
+  step.form = step.form || { questions:0, conditions:0, pdfs:0, emails:0, signatures:0, addons:0 };
+  const f = step.form;
+  const makeNum = (lab, key)=>{
+    const r=document.createElement('div'); r.className='rowline';
+    r.innerHTML = `<label class="small">${lab}</label>`;
+    const i=document.createElement('input'); i.type='number'; i.min='0'; i.step='1'; i.value=Number(f[key]||0);
+    i.addEventListener('input', ()=>{ f[key]=Number(i.value||0); persist(); renderRollup(); });
+    r.appendChild(i); metaWrap.appendChild(r);
+  };
+  makeNum('# Questions','questions');
+  makeNum('# Conditions','conditions');
+  makeNum('# PDFs','pdfs');
+  makeNum('# Emails','emails');
+  makeNum('# Signatures','signatures');
+  makeNum('# Add-ons','addons');
+}
+if (step.category === 'Scheduler'){
+  const r=document.createElement('div'); r.className='rowline';
+  r.innerHTML = `<label class="small">Units (page / event / team member)</label>`;
+  const i=document.createElement('input'); i.type='number'; i.min='0'; i.step='1'; i.value=Number(step.schedulerUnits||0);
+  i.addEventListener('input', ()=>{ step.schedulerUnits = Number(i.value||0); persist(); renderRollup(); });
+  r.appendChild(i); metaWrap.appendChild(r);
+}
+if (step.category === 'Other'){
+  const r=document.createElement('div'); r.className='rowline';
+  r.innerHTML = `<label class="small">Estimated Hours</label>`;
+  const i=document.createElement('input'); i.type='number'; i.min='0'; i.step='0.25'; i.value=Number(step.otherHours||0);
+  i.addEventListener('input', ()=>{ step.otherHours = Number(i.value||0); persist(); renderRollup(); });
+  r.appendChild(i); metaWrap.appendChild(r);
+}
 
 // tabs + library/builder/apps
 const libTabBtn = $('libTabBtn'), builderTabBtn = $('builderTabBtn'), appsTabBtn = $('appsTabBtn');
@@ -102,6 +218,11 @@ function setStateFromPayload(obj){
   topResources.forEach(r => { if (!r.id) r.id = newId(); });
   if (Array.isArray(obj.apps)) apps = obj.apps;
   if (typeof obj.zapStepRate === 'number') zapStepRate = obj.zapStepRate;
+  if (typeof obj.emailStepRate === 'number') emailStepRate = obj.emailStepRate;
+  if (typeof obj.schedulerRate === 'number') schedulerRate = obj.schedulerRate;
+  if (typeof obj.otherHourlyRate === 'number') otherHourlyRate = obj.otherHourlyRate;
+  if (obj.formRate) formRate = Object.assign(formRate, obj.formRate);
+  if (typeof obj.clickupWebhookUrl === 'string') clickupWebhookUrl = obj.clickupWebhookUrl;
 
   // migrate legacy step resource objects
   steps.forEach(s=>{
@@ -133,7 +254,10 @@ function payload(){
   return {
     title, startsWhen, endsWhen, milestones,
     assigneePool, resources: topResources, steps,
-    apps, zapStepRate
+    apps,
+    zapStepRate, emailStepRate, schedulerRate, otherHourlyRate,
+    formRate,
+    clickupWebhookUrl
   };
 }
 
@@ -1108,7 +1232,44 @@ function renderViz(){
 /***********************
  * 14) Cost roll-up
  ***********************/
+function priceForStep(s){
+  const cat = s.category || "";
+  if (cat === 'Automation'){
+    const stepsCount = Number(s.zapSteps||0);
+    return stepsCount * zapStepRate;
+  }
+  if (cat === 'Forms'){
+    const f = s.form || {};
+    return (
+      Number(f.questions||0)*Number(formRate.question||0) +
+      Number(f.conditions||0)*Number(formRate.condition||0) +
+      Number(f.pdfs||0)*Number(formRate.pdf||0) +
+      Number(f.emails||0)*Number(formRate.email||0) +
+      Number(f.signatures||0)*Number(formRate.signature||0) +
+      Number(f.addons||0)*Number(formRate.addon||0)
+    );
+  }
+  if (cat === 'Email Marketing Campaigns'){
+    // $80 per “step” in the campaign; reuse zapSteps as the count field for symmetry
+    const stepsCount = Number(s.zapSteps||0);
+    return stepsCount * emailStepRate;
+  }
+  if (cat === 'Scheduler'){
+    return Number(s.schedulerUnits||0) * schedulerRate;
+  }
+  if (cat === 'Other'){
+    return Number(s.otherHours||0) * otherHourlyRate;
+  }
+  return 0;
+}
+
+function isApproved(s){
+  // Approved = Status Do Now AND Responsible is Sphynx or Joint
+  return (s.status === 'Do Now') && (s.responsible === 'Sphynx Team' || s.responsible === 'Joint');
+}
+
 function computeTotals(){
+  // Resource totals remain as before
   let resourcesTotal = 0, hoursTotal = 0;
   topResources.forEach(r=>{
     const s = r.scope || {};
@@ -1117,45 +1278,71 @@ function computeTotals(){
       hoursTotal += Number(s.effortHours || 0);
     }
   });
+
+  // Step-based totals
   let zapStepsTotal = 0;
   steps.forEach(s=>{ zapStepsTotal += Number(s.zapSteps || 0); });
-  const automationsTotal = zapStepsTotal * zapStepRate;
+
+  const automationsTotal = steps
+    .filter(s=>s.category==='Automation')
+    .reduce((sum,s)=> sum + priceForStep(s), 0);
+
+  const formsTotal = steps.filter(s=>s.category==='Forms')
+    .reduce((sum,s)=> sum + priceForStep(s), 0);
+
+  const emailTotal = steps.filter(s=>s.category==='Email Marketing Campaigns')
+    .reduce((sum,s)=> sum + priceForStep(s), 0);
+
+  const schedulerTotal = steps.filter(s=>s.category==='Scheduler')
+    .reduce((sum,s)=> sum + priceForStep(s), 0);
+
+  const otherTotal = steps.filter(s=>s.category==='Other')
+    .reduce((sum,s)=> sum + priceForStep(s), 0);
+
+  const approvedTotal = steps.filter(isApproved).reduce((sum,s)=> sum + priceForStep(s), 0);
+
   const perStep = steps.map(s => ({
     name: s.name,
-    zapSteps: Number(s.zapSteps||0),
-    zapCost: Number(s.zapSteps||0) * zapStepRate,
+    category: s.category || '',
+    price: priceForStep(s),
+    zapSteps: Number(s.zapSteps||0)
   }));
-  return { resourcesTotal, hoursTotal, zapStepsTotal, automationsTotal, perStep };
+
+  return {
+    resourcesTotal, hoursTotal, zapStepsTotal, automationsTotal, formsTotal, emailTotal, schedulerTotal, otherTotal,
+    approvedTotal,
+    grandTotal: resourcesTotal + automationsTotal + formsTotal + emailTotal + schedulerTotal + otherTotal,
+    perStep
+  };
 }
+
 function renderRollup(){
   const box = rollupSummary; if (!box) return;
   const t = computeTotals();
   box.innerHTML = "";
   const mk = (lab, val) => {
     const row = document.createElement('div'); row.className='resrow';
-    const l = document.createElement('label'); l.textContent=lab;
-    const v = document.createElement('div'); v.className='mini'; v.textContent = val;
-    row.appendChild(l); row.appendChild(v); box.appendChild(row);
+    row.innerHTML = `<label>${lab}</label><div class="mini">${val}</div>`;
+    box.appendChild(row);
   };
-  mk('Proposal Resources Total', `$${t.resourcesTotal.toFixed(2)}`);
-  mk('Estimated Effort (hrs)', t.hoursTotal.toFixed(2));
-  mk('Zap Steps (count)', String(t.zapStepsTotal));
-  mk('Automation Total', `$${t.automationsTotal.toFixed(2)}`);
-  mk('Grand Total', `$${(t.resourcesTotal + t.automationsTotal).toFixed(2)}`);
+  mk('Resources Total', `$${t.resourcesTotal.toFixed(2)}`);
+  mk('Automations Total', `$${t.automationsTotal.toFixed(2)}`);
+  mk('Forms Total', `$${t.formsTotal.toFixed(2)}`);
+  mk('Email Campaigns Total', `$${t.emailTotal.toFixed(2)}`);
+  mk('Scheduler Total', `$${t.schedulerTotal.toFixed(2)}`);
+  mk('Other Total', `$${t.otherTotal.toFixed(2)}`);
+  mk('Approved (Do Now & Sphynx/Joint)', `$${t.approvedTotal.toFixed(2)}`);
+  mk('Grand Total', `$${t.grandTotal.toFixed(2)}`);
 
   const det = document.createElement('details'); det.className='resource'; det.open=false;
-  const sum = document.createElement('summary'); sum.textContent = 'Per Step Breakdown';
-  det.appendChild(sum);
+  det.innerHTML = `<summary>Per Step Breakdown</summary>`;
   const inner = document.createElement('div');
   t.perStep.forEach(p=>{
     const row = document.createElement('div'); row.className='resrow';
-    const l = document.createElement('label'); l.textContent = p.name;
-    const v = document.createElement('div'); v.className='mini';
-    v.textContent = `Zap Steps: ${p.zapSteps} • Cost: $${p.zapCost.toFixed(2)}`;
-    row.appendChild(l); row.appendChild(v); inner.appendChild(row);
+    row.innerHTML = `<label>${p.name} (${p.category||'—'})</label><div class="mini">$${p.price.toFixed(2)}${p.zapSteps?` • ${p.zapSteps} zap steps`:''}</div>`;
+    inner.appendChild(row);
   });
-  det.appendChild(inner);
-  box.appendChild(det);
+  det.appendChild(inner); box.appendChild(det);
 }
 
 /***********************
@@ -1171,7 +1358,75 @@ wfMilestones && wfMilestones.addEventListener('input', ()=>{
 addStepBtn && addStepBtn.addEventListener('click', ()=>{
   const base = stepNameInput.value.trim() || "New Step";
   const name = uniqueName(base);
-  steps.push({ name, assigneeType:'team', assignee:"", description:"", resources:[], branches: [] });
+  steps.push({
+    name,
+    // outline
+    stage: "",                    // Stage / Workflow Name
+    category: "",                 // Automation | Forms | Email Marketing Campaigns | Scheduler | Other
+    itemTitle: "",                // Item (Title)
+    additionalDetails: "",        // Additional Details
+    fieldsNote: "",               // Fields (free entry for now)
+    docsNeeded: "", logins: "", references: "", testingChecklist: "",
+    status: "Do Now",             // Do Now | Do Later | Don't Do | Done
+    responsible: "Sphynx Team",   // Client | Sphynx Team | Joint
+  
+    // implementation
+    assigneeType:'team',
+    assignee:"",
+    description:"",
+    resources:[],
+    branches: [],
+  
+    // apps + scoping
+    app:"", appActionKey:"", appActionType:"",
+    zapSteps: 0,
+    // Needs Filter (explicit UI)
+    const nfRow = document.createElement('div'); nfRow.className='rowline';
+    const nfLbl = document.createElement('label'); nfLbl.textContent='Needs Filter'; nfLbl.className='small';
+    const nfChk = document.createElement('input'); nfChk.type='checkbox';
+    nfChk.checked = !!step.requiresFilter;
+    nfChk.addEventListener('change', ()=>{
+      step.requiresFilter = nfChk.checked;
+      // If checked and zapSteps equals current base, add +1. If unchecked and looks like we just added it, subtract.
+      // Safer: just recompute base
+      const appObj = apps.find(a=>a.app===step.app);
+      const acts = appObj ? appObj.actions : [];
+      const pick = acts.find(x=>x.key===step.appActionKey);
+      const base = pick ? 1 + ((step.requiresFilter || pick.requiresFilter) ? 1 : 0) : 0;
+      step.zapSteps = base;
+      persist(); renderRollup();
+    });
+    nfRow.appendChild(nfLbl); nfRow.appendChild(nfChk);
+    metaWrap.appendChild(nfRow);
+    
+    // Auto-default for Calendly/ScheduleOnce triggers
+    const autoNeedsFilter = ()=>{
+      const appName = (step.app||"").toLowerCase();
+      if (!appName) return false;
+      if (appName.includes('calendly') || appName.includes('scheduleonce')) return (step.appActionType === 'trigger');
+      return false;
+    };
+    if (step.app && step.appActionKey && step.appActionType){
+      const aut = autoNeedsFilter();
+      // Only auto-check if user hasn't overridden:
+      if (step.requiresFilter !== true && step.requiresFilter !== false){
+        step.requiresFilter = aut;
+      }
+      nfChk.checked = step.requiresFilter;
+      const base = 1 + (step.requiresFilter ? 1 : 0);
+      step.zapSteps = base;
+    }
+    
+    // Forms component counts
+    form: { questions:0, conditions:0, pdfs:0, emails:0, signatures:0, addons:0 },
+  
+    // Scheduler count unit
+    schedulerUnits: 0,
+  
+    // Other hours
+    otherHours: 0
+  });
+
   stepNameInput.value = "";
   persist(); renderViz();
 });
@@ -1188,6 +1443,52 @@ settingsBtn && settingsBtn.addEventListener('click', ()=>{
   settingsPanel.style.display = show ? '' : 'none';
   zapRateInput.value = zapStepRate;
 });
+const emailStepRateInput = $('emailStepRateInput');
+const schedulerRateInput = $('schedulerRateInput');
+const otherHourlyRateInput = $('otherHourlyRateInput');
+
+const formRateQuestionInput = $('formRateQuestionInput');
+const formRateConditionInput = $('formRateConditionInput');
+const formRatePdfInput = $('formRatePdfInput');
+const formRateEmailInput = $('formRateEmailInput');
+const formRateSignatureInput = $('formRateSignatureInput');
+const formRateAddonInput = $('formRateAddonInput');
+
+const clickupWebhookInput = $('clickupWebhookInput');
+const exportScopingCsvBtn = $('exportScopingCsvBtn');
+const sendToClickupBtn = $('sendToClickupBtn');
+
+settingsBtn && settingsBtn.addEventListener('click', ()=>{
+  const show = settingsPanel.style.display==='none';
+  settingsPanel.style.display = show ? '' : 'none';
+  zapRateInput.value = zapStepRate;
+  emailStepRateInput.value = emailStepRate;
+  schedulerRateInput.value = schedulerRate;
+  otherHourlyRateInput.value = otherHourlyRate;
+  formRateQuestionInput.value = formRate.question;
+  formRateConditionInput.value = formRate.condition;
+  formRatePdfInput.value = formRate.pdf;
+  formRateEmailInput.value = formRate.email;
+  formRateSignatureInput.value = formRate.signature;
+  formRateAddonInput.value = formRate.addon;
+  clickupWebhookInput.value = clickupWebhookUrl || "";
+});
+
+function numberFrom(input){ const v=Number(input.value||0); return Number.isFinite(v)?v:0; }
+
+emailStepRateInput && emailStepRateInput.addEventListener('input', ()=>{ emailStepRate = numberFrom(emailStepRateInput); persist(); renderRollup(); });
+schedulerRateInput && schedulerRateInput.addEventListener('input', ()=>{ schedulerRate = numberFrom(schedulerRateInput); persist(); renderRollup(); });
+otherHourlyRateInput && otherHourlyRateInput.addEventListener('input', ()=>{ otherHourlyRate = numberFrom(otherHourlyRateInput); persist(); renderRollup(); });
+
+formRateQuestionInput && formRateQuestionInput.addEventListener('input', ()=>{ formRate.question = numberFrom(formRateQuestionInput); persist(); renderRollup(); });
+formRateConditionInput && formRateConditionInput.addEventListener('input', ()=>{ formRate.condition = numberFrom(formRateConditionInput); persist(); renderRollup(); });
+formRatePdfInput && formRatePdfInput.addEventListener('input', ()=>{ formRate.pdf = numberFrom(formRatePdfInput); persist(); renderRollup(); });
+formRateEmailInput && formRateEmailInput.addEventListener('input', ()=>{ formRate.email = numberFrom(formRateEmailInput); persist(); renderRollup(); });
+formRateSignatureInput && formRateSignatureInput.addEventListener('input', ()=>{ formRate.signature = numberFrom(formRateSignatureInput); persist(); renderRollup(); });
+formRateAddonInput && formRateAddonInput.addEventListener('input', ()=>{ formRate.addon = numberFrom(formRateAddonInput); persist(); renderRollup(); });
+
+clickupWebhookInput && clickupWebhookInput.addEventListener('input', ()=>{ clickupWebhookUrl = clickupWebhookInput.value||""; persist(); });
+
 zapRateInput && zapRateInput.addEventListener('input', ()=>{
   const v = Number(zapRateInput.value || 0);
   if (!Number.isNaN(v)) { zapStepRate = v; persist(); renderRollup(); }
