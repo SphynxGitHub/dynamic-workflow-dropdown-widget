@@ -1,6 +1,16 @@
 /* ==========
-   Sphynx Workflow Builder – app.js
+   Sphynx Workflow Builder – app.js (hotfix)
    ========== */
+
+// Simple on-page error banner (helps spot silent crashes)
+window.addEventListener('error', (e)=>{
+  const box = document.getElementById('statusErr');
+  if (box) {
+    box.style.display = 'block';
+    box.textContent = `Error: ${e.message}`;
+    setTimeout(()=> box.style.display = 'none', 5000);
+  }
+});
 
 // Helpers
 const $ = (id)=> document.getElementById(id);
@@ -12,11 +22,11 @@ const newId = ()=> 'r_' + Math.random().toString(36).slice(2,10);
 const ACTIONS = { CLOSE:'close', RESTART_WORKFLOW:'restart_workflow', RESTART_CURRENT:'restart_current', JUMP:'jump' };
 
 // State
-let steps = []; // each step carries outline + impl + scoping fields
+let steps = [];
 let assigneePool = [];
 let title = "", startsWhen = "", endsWhen = "", milestones = [];
-let topResources = []; // [{id,type,name,mode?,link?,fileName?,fileData?,email?,automation? }]
-let apps = []; // [{app, actions:[{type,key,name,requiresFilter,notes}]}]
+let topResources = [];
+let apps = [];
 
 // Pricing defaults & settings
 let zapStepRate = 80;
@@ -107,7 +117,8 @@ const stepNameInput=$('stepNameInput'), addStepBtn=$('addStepBtn'), exportBtn=$(
 const cards=$('cards'), emptyState=$('emptyState'), importBtn=$('importBtn'), importFile=$('importFile');
 
 // DOM refs (Library)
-const libraryList=$('libraryList'); const libraryFilters=document.querySelectorAll('[data-libfilter]');
+const libraryList=$('libraryList');
+const libraryFilters=Array.from(document.querySelectorAll('[data-libfilter]')); // hotfix
 const rollupBox=$('rollupBox');
 
 // DOM refs (Apps)
@@ -264,7 +275,7 @@ function renderResourceList(listEl, arr, onChange){
     const sum=document.createElement('summary'); sum.textContent = resourceSummary(r);
     const del=document.createElement('button'); del.className='btn'; del.textContent='Delete'; del.style.marginLeft='8px';
     del.addEventListener('click', (e)=>{ e.preventDefault(); arr.splice(idx,1); onChange(); });
-    sum.appendChild(del); det.appendChild(sum);
+    det.appendChild(sum); det.appendChild(del);
     const inner=document.createElement('div'); builderForResource(inner, r, onChange); det.appendChild(inner);
     listEl.appendChild(det);
   });
@@ -301,9 +312,8 @@ appsCsvInput.addEventListener('change', async ()=>{
   const file=appsCsvInput.files?.[0]; if(!file) return;
   const text=await file.text();
   const rows = parseCsv(text);
-  // normalize: expect columns app,type,name,(optional key,notes,requiresFilter)
+  if (!rows.length) { apps=[]; appsPreview.textContent='(empty)'; persistImmediate(); return; }
   const hdr = rows.shift().map(h=>h.trim().toLowerCase());
-  const ix = (n)=> hdr.indexOf(n);
   const idxApp = firstIndex(hdr, ['app','application','system','integration','product']);
   const idxType= firstIndex(hdr, ['type','event type','kind','category']);
   const idxName= firstIndex(hdr, ['name','event','action name','label','title']);
@@ -330,8 +340,7 @@ function normType(x){ if(/trigger/i.test(x)) return 'trigger'; if(/action/i.test
 function slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'item'; }
 function firstIndex(hdr, arr){ for(const a of arr){ const i=hdr.indexOf(a); if(i>=0) return i; } return -1; }
 function parseCsv(text){
-  // simple CSV parser good enough for our columns
-  const lines = text.replace(/\r/g,'').split('\n').filter(Boolean);
+  const lines = text.replace(/\r/g,'').split('\n').filter(l=>l.length>0);
   return lines.map(line=>{
     const out=[]; let cur='', q=false;
     for(let i=0;i<line.length;i++){
@@ -415,6 +424,13 @@ function scopingRows(){
     price: priceForStep(s),
   }));
 }
+
+// ---------- Small UI row helpers (lifted to top-level to avoid hoisting pitfalls) ----------
+function mkRow(label){ const r=document.createElement('div'); r.className='rowline'; const l=document.createElement('label'); l.textContent=label; l.className='small'; r.appendChild(l); return r; }
+function textRow(label,key,obj,ph=''){ const r=mkRow(label); const i=document.createElement('input'); i.type='text'; i.value=obj[key]||""; i.placeholder=ph; i.addEventListener('input', ()=>{ obj[key]=i.value; persist(); }); r.appendChild(i); return r; }
+function textareaRow(label,key,obj){ const r=mkRow(label); const t=document.createElement('textarea'); t.value=obj[key]||""; t.addEventListener('input', ()=>{ obj[key]=t.value; persist(); }); r.appendChild(t); return r; }
+function selectRow(label,key,obj,options,onchange){ const r=mkRow(label); const s=document.createElement('select'); options.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent = v||'(none)'; s.appendChild(o);}); s.value=obj[key]||""; s.addEventListener('change', ()=>{ obj[key]=s.value; onchange && onchange(); }); r.appendChild(s); return r; }
+function numberRow(label,obj,key,step=1){ const r=mkRow(label); const i=document.createElement('input'); i.type='number'; i.min='0'; i.step=String(step); i.value=Number(obj[key]||0); i.addEventListener('input', ()=>{ obj[key]=Number(i.value||0); persist(); renderRollup(); }); r.appendChild(i); return r; }
 
 // ---------- Render Steps ----------
 function renderSteps(){
@@ -511,10 +527,8 @@ function renderSteps(){
       const appObj = apps.find(a=>a.app===step.app);
       const acts = appObj ? appObj.actions.filter(x=>!typeSel.value || x.type===typeSel.value) : [];
       evSel.innerHTML = `<option value="">(event)</option>` + acts.map(x=>`<option value="${x.key}">${x.name}</option>`).join('');
-      // defaults for Calendly/ScheduleOnce triggers
       const autNeeds = autoNeedsFilter(step.app, typeSel.value);
       if (step.requiresFilter === undefined) step.requiresFilter = autNeeds;
-      // zap steps base = 1 (+1 if needs filter)
       step.zapSteps = typeSel.value ? (1 + (step.requiresFilter?1:0)) : 0;
       persist();
     }
@@ -576,13 +590,6 @@ function renderSteps(){
     card.appendChild(document.createElement('div')).className='divider';
     card.appendChild(rowsWrap); card.appendChild(addOutcomeRow); card.appendChild(map);
     cards.appendChild(card);
-
-    // helpers inside render
-    function mkRow(label){ const r=document.createElement('div'); r.className='rowline'; const l=document.createElement('label'); l.textContent=label; l.className='small'; r.appendChild(l); return r; }
-    function textRow(label,key,obj,ph=''){ const r=mkRow(label); const i=document.createElement('input'); i.type='text'; i.value=obj[key]||""; i.placeholder=ph; i.addEventListener('input', ()=>{ obj[key]=i.value; persist(); }); r.appendChild(i); return r; }
-    function textareaRow(label,key,obj){ const r=mkRow(label); const t=document.createElement('textarea'); t.value=obj[key]||""; t.addEventListener('input', ()=>{ obj[key]=t.value; persist(); }); r.appendChild(t); return r; }
-    function selectRow(label,key,obj,options,onchange){ const r=mkRow(label); const s=document.createElement('select'); options.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent = v||'(none)'; s.appendChild(o);}); s.value=obj[key]||""; s.addEventListener('change', ()=>{ obj[key]=s.value; onchange && onchange(); }); r.appendChild(s); return r; }
-    function numberRow(label,obj,key,step=1){ const r=mkRow(label); const i=document.createElement('input'); i.type='number'; i.min='0'; i.step=String(step); i.value=Number(obj[key]||0); i.addEventListener('input', ()=>{ obj[key]=Number(i.value||0); persist(); renderRollup(); }); r.appendChild(i); return r; }
   });
 }
 function prettyMap(step){
@@ -726,7 +733,6 @@ renderLibrary('');
 
 // ---------- Render everything ----------
 function renderAll(){
-  // top-level reflect
   wfTitle.value=title; wfStarts.value=startsWhen; wfEnds.value=endsWhen; wfMilestones.value=(milestones||[]).join('\n');
   renderAssignees(); renderTopResources(); renderTopBuilder(); renderSteps(); if (paneLibrary.style.display!=='none') renderRollup();
 }
@@ -738,7 +744,6 @@ try{
     renderAll(); persistImmediate();
   });
   JFCustomWidget.subscribe("submit", function(){
-    // minimal validation
     const names = steps.map(s=>s.name.trim()).filter(Boolean);
     const dup = names.find((n,i)=> names.indexOf(n)!==i);
     const value = JSON.stringify(payload());
@@ -749,4 +754,5 @@ try{
 }catch(e){ /* running standalone */ }
 
 // Initial
+activate(tabBuilder); // ensure a tab is active
 renderAll();
