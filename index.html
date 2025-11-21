@@ -1,196 +1,124 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
   <meta charset="utf-8" />
-  <title>Sphynx Workflow Builder</title>
+  <title>Operations Library</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Jotform Widget API (safe if not in Jotform too) -->
-  <script src="//js.jotform.com/JotFormCustomWidget.min.js"></script>
   <style>
     :root{
-      --bg:#fafafa; --card:#ffffff; --muted:#6a6a6a; --line:#e5e5e5;
-      --accent:#3b82f6; --accent-ghost:#e8f0ff; --danger:#e11d48; --radius:14px;
-      --chip:#eef2ff; --chip-text:#1e3a8a; --chip-border:#c7d2fe;
+      --bg:#0f1115; --panel:#161a22; --soft:#1d2330; --line:#242c3a; --text:#e8ecf3; --muted:#9aa7bd; --accent:#72a0ff; --ok:#18c38a; --err:#ff5d5d;
+      --radius:14px;
     }
-    html,body{margin:0;padding:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111}
-    .wrap{padding:12px;max-width:1200px;margin:0 auto}
-    .section{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:12px}
-    .section h3{margin:0 0 8px 0;font-size:15px}
-    .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
-    .rowline{display:grid;grid-template-columns:160px 1fr;gap:8px;align-items:center}
-    .rowline label{font-size:12px;color:#475569}
-    input[type="text"], input[type="number"], textarea, select{
-      width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit
-    }
-    textarea{min-height:68px;resize:vertical}
-    .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-    .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 12px;font-size:14px;cursor:pointer}
-    .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-    .btn.ghost{background:var(--accent-ghost);color:#274c9f;border-color:#cfe0ff}
-    .btn.danger{background:#fff;color:var(--danger);border-color:#ffd1dc}
-    .hint{font-size:12px;color:#6a6a6a;margin-top:2px}
-    .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-    .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:var(--chip);color:var(--chip-text);border:1px solid var(--chip-border);border-radius:999px;font-size:12px}
-    .chip button{border:none;background:none;cursor:pointer;color:#6b7280}
-    .add-assignee{display:flex;gap:8px;margin-top:8px}
-    .add-assignee input{flex:1 1 auto}
-    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px;box-shadow:0 1px 0 rgba(0,0,0,.02);position:relative}
-    .card header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-    .card header input{flex:1 1 auto;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-weight:600;background:#fff}
-    .iconbtn{border:none;background:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
-    .iconbtn.red{width:34px;height:34px;border-radius:50%;background:var(--danger);color:#fff}
-    .iconbtn.red svg{width:18px;height:18px}
-    .tag{font-size:12px;color:#64748b;margin:6px 0}
-    .row{display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap}
-    .divider{height:1px;background:var(--line);margin:10px 0}
-    .empty{border:1px dashed var(--line);border-radius:var(--radius);padding:16px;text-align:center;color:#6a6a6a;background:#fff}
-    .mapline{font-size:12px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px;margin-top:6px;white-space:pre-wrap}
-    .error{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
-    .ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:8px;border-radius:10px;font-size:13px;margin:8px 0;display:none}
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial}
+    a{color:inherit;text-decoration:none}
+    .app{display:grid; grid-template-columns: 260px 1fr; height:100%}
 
-    /* resources */
-    details.resource{border:1px solid var(--line);border-radius:10px;padding:8px;margin:8px 0;background:#fff}
-    details.resource summary{cursor:pointer;outline:none;font-weight:600}
-    .resgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:8px}
-    .resrow{display:grid;grid-template-columns:160px 1fr;gap:8px;align-items:center}
-    .resrow label{font-size:12px;color:#475569}
-    .mini{font-size:12px;color:#6b7280}
-    /* top nav */
-    .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-    .tab{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer}
-    .tab.active{background:var(--accent-ghost);border-color:#cfe0ff;color:#274c9f}
+    /* Sidebar */
+    .sidebar{background:var(--panel); border-right:1px solid var(--line); padding:16px 12px; overflow:auto}
+    .brand{font-weight:700; letter-spacing:.4px; margin-bottom:12px}
+    .divider{height:1px; background:var(--line); margin:10px 0}
+    .menu .group-title{font-size:12px; color:var(--muted); margin:10px 10px 6px}
+    .menu a{display:block; padding:8px 10px; border-radius:10px; color:var(--text)}
+    .menu a.active{background:var(--soft); color:var(--accent); border:1px solid var(--line)}
+    .menu a:hover{background:var(--soft)}
+
+    /* Main */
+    .main{display:flex; flex-direction:column; min-width:0; height:100%}
+    .topbar{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--line); background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,0))}
+    .crumbs{font-size:12px; color:var(--muted)}
+    .content{padding:16px; overflow:auto}
+
+    /* Cards, inputs, buttons */
+    .grid{display:grid; gap:12px}
+    .grid.cols-2{grid-template-columns: repeat(2, minmax(0,1fr))}
+    .grid.cols-3{grid-template-columns: repeat(3, minmax(0,1fr))}
+    .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px}
+    h2{margin:0 0 10px 0; font-size:18px}
+    h3{margin:0 0 8px 0; font-size:15px; color:#d7def0}
+    .muted{color:var(--muted)}
+    label{font-size:12px; color:var(--muted); display:block; margin:0 0 6px}
+    input[type=text], input[type=number], textarea, select{
+      width:100%; background:#0f131b; color:var(--text); border:1px solid var(--line);
+      border-radius:10px; padding:8px 10px; outline:none;
+    }
+    textarea{min-height:90px}
+    .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+    .spacer{flex:1}
+    .btn{
+      background:#1b2332; color:var(--text); border:1px solid var(--line); border-radius:10px;
+      padding:8px 12px; cursor:pointer
+    }
+    .btn.primary{background:var(--accent); color:#0b1021; border-color:transparent; font-weight:600}
+    .btn.ghost{background:transparent}
+    .btn.small{padding:6px 10px; font-size:12px}
+    .pill{display:inline-block; padding:2px 8px; border-radius:999px; background:#0e1523; color:#9CB6FF; border:1px solid #253352; font-size:12px}
+    .ok{color:var(--ok)} .err{color:var(--err)}
+
+    table{width:100%; border-collapse:collapse}
+    th,td{padding:10px; border-bottom:1px solid var(--line); text-align:left}
+    th{color:#c8d3eb; font-weight:600; background:#111623}
+
+    /* Collapsible section (for big matchers) */
+    .collapse{border:1px solid var(--line); border-radius:12px; overflow:hidden}
+    .collapse > .c-head{background:#131a27; padding:10px 12px; cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px}
+    .collapse > .c-body{max-height:0; overflow:hidden; transition:max-height .24s ease}
+    .collapse.open > .c-body{max-height:1000px}
+    .caret{transition: transform .24s ease}
+    .collapse.open .caret{transform: rotate(90deg)}
+
+    /* Sticky page header */
+    .sticky{ position:sticky; top:0; z-index:2; background:var(--panel); padding-bottom:8px; margin:-14px -14px 14px -14px; border-bottom:1px solid var(--line); border-top-left-radius:var(--radius); border-top-right-radius:var(--radius) }
+    .sticky h2{padding:10px 14px}
+    .sticky .row{padding:0 14px 10px}
+    .notice{font-size:12px; color:var(--muted)}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="tabs">
-      <button id="tabBuilder" class="tab active">Builder</button>
-      <button id="tabLibrary" class="tab">Resource Library</button>
-      <button id="tabApps" class="tab">Apps</button>
-      <button id="tabSettings" class="tab">Settings</button>
-    </div>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">⚙️ Operations Library</div>
+      <div class="divider"></div>
 
-    <!-- Pane: Builder -->
-    <div id="paneBuilder">
-      <!-- Top-level workflow info -->
-      <div class="section">
-        <h3>Workflow Info</h3>
-        <div class="grid2">
-          <div class="rowline"><label>Workflow Title</label><input id="wfTitle" type="text" placeholder="e.g., New Client Onboarding" /></div>
-          <div class="rowline"><label>Workflow Starts When</label><input id="wfStarts" type="text" placeholder="e.g., Contract signed" /></div>
-          <div class="rowline"><label>Workflow Ends When</label><input id="wfEnds" type="text" placeholder="e.g., Welcome email sent" /></div>
-          <div class="rowline" style="grid-column:1/-1"><label>Milestone(s)</label><textarea id="wfMilestones" placeholder="One per line or comma-separated"></textarea></div>
-        </div>
-      </div>
+      <nav class="menu" id="nav">
+        <div class="group-title">Pages</div>
+        <a href="#/apps" data-route>Apps</a>
+        <a href="#/resources" data-route>Resources</a>
+        <a href="#/settings" data-route>Settings</a>
 
-      <!-- Assignee pool -->
-      <div class="section">
-        <h3>Possible Assignees</h3>
-        <div class="hint">Steps can assign to a “Team Member” from this list, or mark as “Automated”.</div>
-        <div class="chips" id="assigneeChips"></div>
-        <div class="add-assignee">
-          <input id="assigneeInput" type="text" placeholder="e.g., Arielle, Operations, Chad" />
-          <button id="addAssigneeBtn" class="btn">Add</button>
-        </div>
-      </div>
+        <div class="divider"></div>
+        <div class="group-title">Resources</div>
+        <a href="#/resources/zaps" data-route>Zaps</a>
+        <a href="#/resources/forms" data-route>Forms</a>
+        <a href="#/resources/workflows" data-route>Workflows</a>
+        <a href="#/resources/scheduling" data-route>Scheduling</a>
+        <a href="#/resources/email-campaigns" data-route>Email Campaigns</a>
 
-      <!-- Top-level resources -->
-      <div class="section">
-        <h3>Resources (Global)</h3>
-        <div class="hint">Attach forms, email templates, automations, or other docs/links used across the workflow.</div>
-        <div id="topResources"></div>
-        <div class="row" style="margin-top:8px">
-          <select id="topResType">
-            <option value="form">Form</option>
-            <option value="email">Email Template</option>
-            <option value="automation">Automation</option>
-            <option value="other">Other</option>
-          </select>
-          <input id="topResName" type="text" placeholder="Resource name (required)" />
-        </div>
-        <div id="topResBuilder" class="section" style="padding:10px;margin-top:8px"></div>
-        <div class="row" style="justify-content:flex-end"><button id="addTopRes" class="btn">Add Resource</button></div>
-      </div>
+        <div class="divider"></div>
+        <div class="group-title">Settings</div>
+        <a href="#/settings/team" data-route>Team</a>
+        <a href="#/settings/segments" data-route>Segments</a>
+        <a href="#/settings/datapoints" data-route>Datapoints</a>
+        <a href="#/settings/folder-hierarchy" data-route>Folder Hierarchy</a>
+        <a href="#/settings/household-names" data-route>Household Naming Conventions</a>
+        <a href="#/settings/folder-names" data-route>Folder Naming Conventions</a>
+      </nav>
+    </aside>
 
-      <!-- Toolbar -->
-      <div class="toolbar">
-        <input id="stepNameInput" type="text" placeholder="New step name (e.g., Intro Call)" />
-        <button id="addStepBtn" class="btn primary">Add Step</button>
-        <button id="exportBtn" class="btn ghost">Download JSON</button>
-        <button id="importBtn" class="btn ghost">Import JSON</button>
-        <input id="importFile" type="file" accept="application/json" style="display:none" />
-        <button id="clearAllBtn" class="btn danger">Clear All</button>
-      </div>
-      <div class="hint">Outcomes: <b>Close Workflow</b>, <b>Restart Workflow</b>, <b>Restart Current Step</b>, <b>Jump to Step</b> (choose target).</div>
-
-      <div id="statusOk" class="ok">Saved.</div>
-      <div id="statusErr" class="error"></div>
-
-      <!-- Steps -->
-      <div id="cards" class="grid" aria-live="polite"></div>
-      <div id="emptyState" class="empty" style="display:none;">No steps yet. Add your first step above.</div>
-    </div>
-
-    <!-- Pane: Resource Library -->
-    <div id="paneLibrary" style="display:none">
-      <div class="section">
-        <h3>Resource Library</h3>
-        <div id="libraryFilters" class="row">
-          <button class="btn" data-libfilter="">All</button>
-          <button class="btn" data-libfilter="form">Forms</button>
-          <button class="btn" data-libfilter="email">Email Templates</button>
-          <button class="btn" data-libfilter="automation">Automation</button>
-          <button class="btn" data-libfilter="other">Other</button>
-        </div>
-        <div id="libraryList"></div>
-      </div>
-      <div class="section">
-        <h3>Proposal / Scope Roll-up</h3>
-        <div id="rollupBox"></div>
-      </div>
-    </div>
-
-    <!-- Pane: Apps -->
-    <div id="paneApps" style="display:none">
-      <div class="section">
-        <h3>Apps Library</h3>
-        <div class="hint">Import your Zapier Triggers/Actions CSV (normalized headers ok). This feeds App/Type/Event pickers.</div>
+    <main class="main">
+      <div class="topbar">
+        <div class="crumbs" id="crumbs">/</div>
         <div class="row">
-          <input id="appsCsvInput" type="file" accept=".csv" />
-          <button id="clearAppsBtn" class="btn danger">Clear Apps</button>
-        </div>
-        <div id="appsPreview" class="mini"></div>
-      </div>
-    </div>
-
-    <!-- Pane: Settings -->
-    <div id="paneSettings" style="display:none">
-      <div class="section">
-        <h3>Rates & Webhook</h3>
-        <div class="grid2">
-          <div class="rowline"><label>Zap Step Rate ($)</label><input id="zapRateInput" type="number" min="0" step="1" /></div>
-          <div class="rowline"><label>Email Step Rate ($)</label><input id="emailStepRateInput" type="number" min="0" step="1" /></div>
-          <div class="rowline"><label>Scheduler Rate ($/page|event|member)</label><input id="schedulerRateInput" type="number" min="0" step="1" /></div>
-          <div class="rowline"><label>Other Hourly Rate ($)</label><input id="otherHourlyRateInput" type="number" min="0" step="1" /></div>
-
-          <div class="rowline"><label>Form Rate: per Question ($)</label><input id="formRateQuestionInput" type="number" min="0" step="1" /></div>
-          <div class="rowline"><label>Form Rate: per Condition ($)</label><input id="formRateConditionInput" type="number" min="0" step="1" /></div>
-          <div class="rowline"><label>Form Rate: per PDF ($)</label><input id="formRatePdfInput" type="number" min="0" step="1" /></div>
-          <div class="rowline"><label>Form Rate: per Email ($)</label><input id="formRateEmailInput" type="number" min="0" step="1" /></div>
-          <div class="rowline"><label>Form Rate: per Signature ($)</label><input id="formRateSignatureInput" type="number" min="0" step="1" /></div>
-          <div class="rowline"><label>Form Rate: per Add-on ($)</label><input id="formRateAddonInput" type="number" min="0" step="1" /></div>
-
-          <div class="rowline" style="grid-column:1/-1"><label>ClickUp Webhook URL</label><input id="clickupWebhookInput" type="text" placeholder="https://script.google.com/macros/s/.../exec" /></div>
-        </div>
-        <div class="row" style="justify-content:flex-end;margin-top:8px">
-          <button id="exportScopingCsvBtn" class="btn ghost">Download Scoping CSV</button>
-          <button id="sendToClickupBtn" class="btn primary">Send Approved to ClickUp</button>
+          <button class="btn small" id="exportAll">Export</button>
+          <button class="btn small ghost" id="importAll">Import</button>
+          <button class="btn small" id="resetAll">Reset</button>
         </div>
       </div>
-    </div>
+      <div class="content" id="view"><!-- routed content --></div>
+    </main>
   </div>
 
-  <script src="./app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
