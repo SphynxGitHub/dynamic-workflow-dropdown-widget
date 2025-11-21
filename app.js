@@ -1,4 +1,3 @@
-<script>
 /* SPA scaffold + Apps → Functions & Tech Comparison */
 (function(){
   // --------- State & persistence ----------
@@ -912,4 +911,3 @@
   }
 
 })();
-</script>
