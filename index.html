@@ -2,123 +2,679 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Operations Library</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apps — Functions & Tech Comparison</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     :root{
-      --bg:#0f1115; --panel:#161a22; --soft:#1d2330; --line:#242c3a; --text:#e8ecf3; --muted:#9aa7bd; --accent:#72a0ff; --ok:#18c38a; --err:#ff5d5d;
+      --bg:#f7f7f9; --card:#fff; --line:#e6e6ea; --text:#1f2937;
+      --muted:#6b7280; --accent:#3b82f6; --ok:#16a34a; --warn:#f59e0b; --err:#dc2626;
       --radius:14px;
     }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial}
-    a{color:inherit;text-decoration:none}
-    .app{display:grid; grid-template-columns: 260px 1fr; height:100%}
-
-    /* Sidebar */
-    .sidebar{background:var(--panel); border-right:1px solid var(--line); padding:16px 12px; overflow:auto}
-    .brand{font-weight:700; letter-spacing:.4px; margin-bottom:12px}
-    .divider{height:1px; background:var(--line); margin:10px 0}
-    .menu .group-title{font-size:12px; color:var(--muted); margin:10px 10px 6px}
-    .menu a{display:block; padding:8px 10px; border-radius:10px; color:var(--text)}
-    .menu a.active{background:var(--soft); color:var(--accent); border:1px solid var(--line)}
-    .menu a:hover{background:var(--soft)}
-
-    /* Main */
-    .main{display:flex; flex-direction:column; min-width:0; height:100%}
-    .topbar{display:flex; gap:10px; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--line); background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,0))}
-    .crumbs{font-size:12px; color:var(--muted)}
-    .content{padding:16px; overflow:auto}
-
-    /* Cards, inputs, buttons */
-    .grid{display:grid; gap:12px}
-    .grid.cols-2{grid-template-columns: repeat(2, minmax(0,1fr))}
-    .grid.cols-3{grid-template-columns: repeat(3, minmax(0,1fr))}
-    .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px}
-    h2{margin:0 0 10px 0; font-size:18px}
-    h3{margin:0 0 8px 0; font-size:15px; color:#d7def0}
-    .muted{color:var(--muted)}
-    label{font-size:12px; color:var(--muted); display:block; margin:0 0 6px}
-    input[type=text], input[type=number], textarea, select{
-      width:100%; background:#0f131b; color:var(--text); border:1px solid var(--line);
-      border-radius:10px; padding:8px 10px; outline:none;
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    .wrap{max-width:1200px;margin:0 auto;padding:16px}
+    .tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+    .tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;cursor:pointer}
+    .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+    h2{margin:0 0 8px 0;font-size:18px}
+    h3{margin:8px 0;font-size:16px}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    input[type="text"], input[type="number"], textarea, select{
+      border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;min-width:220px;font:inherit
     }
-    textarea{min-height:90px}
-    .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
-    .spacer{flex:1}
-    .btn{
-      background:#1b2332; color:var(--text); border:1px solid var(--line); border-radius:10px;
-      padding:8px 12px; cursor:pointer
-    }
-    .btn.primary{background:var(--accent); color:#0b1021; border-color:transparent; font-weight:600}
+    textarea{min-height:70px;width:100%}
+    .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 12px;cursor:pointer}
+    .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
     .btn.ghost{background:transparent}
-    .btn.small{padding:6px 10px; font-size:12px}
-    .pill{display:inline-block; padding:2px 8px; border-radius:999px; background:#0e1523; color:#9CB6FF; border:1px solid #253352; font-size:12px}
-    .ok{color:var(--ok)} .err{color:var(--err)}
-
-    table{width:100%; border-collapse:collapse}
-    th,td{padding:10px; border-bottom:1px solid var(--line); text-align:left}
-    th{color:#c8d3eb; font-weight:600; background:#111623}
-
-    /* Collapsible section (for big matchers) */
-    .collapse{border:1px solid var(--line); border-radius:12px; overflow:hidden}
-    .collapse > .c-head{background:#131a27; padding:10px 12px; cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px}
-    .collapse > .c-body{max-height:0; overflow:hidden; transition:max-height .24s ease}
-    .collapse.open > .c-body{max-height:1000px}
-    .caret{transition: transform .24s ease}
-    .collapse.open .caret{transform: rotate(90deg)}
-
-    /* Sticky page header */
-    .sticky{ position:sticky; top:0; z-index:2; background:var(--panel); padding-bottom:8px; margin:-14px -14px 14px -14px; border-bottom:1px solid var(--line); border-top-left-radius:var(--radius); border-top-right-radius:var(--radius) }
-    .sticky h2{padding:10px 14px}
-    .sticky .row{padding:0 14px 10px}
-    .notice{font-size:12px; color:var(--muted)}
+    .btn.warn{background:#fff7ed;border-color:#fed7aa}
+    .btn.small{padding:4px 8px;border-radius:8px}
+    .muted{color:var(--muted);font-size:12px}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;border:1px solid #bfdbfe}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid var(--line);padding:8px;vertical-align:top}
+    th{background:#fafafd;text-align:left}
+    .kpis{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+    .kpi{background:#fafafa;border:1px dashed var(--line);padding:8px 10px;border-radius:10px}
+    .scoreWin{background:#ecfdf5;border:1px solid #bbf7d0}
+    .flex-end{display:flex;justify-content:flex-end;gap:8px}
+    .right{float:right}
+    .space{height:8px}
+    .hint{font-size:12px;color:#334155;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:8px;margin-top:8px}
+    .tag{display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:4px 8px;margin:2px}
+    .tag .x{cursor:pointer;color:#64748b}
+    /* modal */
+    .modalBack{position:fixed;inset:0;background:rgba(9,12,22,.55);display:none;align-items:center;justify-content:center;z-index:9999}
+    .modal{background:#fff;max-width:1100px;width:calc(100vw - 28px);max-height:90vh;overflow:auto;border-radius:16px;border:1px solid var(--line);padding:14px}
+    .modalTop{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .collapseBox{border:1px dashed var(--line);border-radius:12px;padding:8px}
+    .collapseHead{display:flex;align-items:center;justify-content:space-between}
+    .w100{width:100%}
+    .nowrap{white-space:nowrap}
+    .scrollX{overflow:auto}
   </style>
 </head>
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <div class="brand">⚙️ Operations Library</div>
-      <div class="divider"></div>
-
-      <nav class="menu" id="nav">
-        <div class="group-title">Apps</div>
-        <a href="#/apps" data-route>Apps</a>
-        <a href="#/resources" data-route>Functions</a>
-        <a href="#/settings" data-route>Tech Comparison</a>
-
-        <div class="divider"></div>
-        <div class="group-title">Resources</div>
-        <a href="#/resources/zaps" data-route>Zaps</a>
-        <a href="#/resources/forms" data-route>Forms</a>
-        <a href="#/resources/workflows" data-route>Workflows</a>
-        <a href="#/resources/scheduling" data-route>Scheduling</a>
-        <a href="#/resources/email-campaigns" data-route>Email Campaigns</a>
-
-        <div class="divider"></div>
-        <div class="group-title">Settings</div>
-        <a href="#/settings/team" data-route>Team</a>
-        <a href="#/settings/segments" data-route>Segments</a>
-        <a href="#/settings/datapoints" data-route>Datapoints</a>
-        <a href="#/settings/folder-hierarchy" data-route>Folder Hierarchy</a>
-        <a href="#/settings/household-names" data-route>Household Naming Conventions</a>
-        <a href="#/settings/folder-names" data-route>Folder Naming Conventions</a>
-      </nav>
-    </aside>
-
-    <main class="main">
-      <div class="topbar">
-        <div class="crumbs" id="crumbs">/</div>
-        <div class="row">
-          <button class="btn small" id="exportAll">Export</button>
-          <button class="btn small ghost" id="importAll">Import</button>
-          <button class="btn small" id="resetAll">Reset</button>
-        </div>
-      </div>
-      <div class="content" id="view"><!-- routed content --></div>
-    </main>
+<div class="wrap" id="app">
+  <div class="tabs">
+    <button class="tab active" data-page="functions">Apps → Functions</button>
+    <button class="tab" data-page="tech">Apps → Tech Comparison</button>
+    <button class="tab" data-page="settings">Settings</button>
   </div>
 
-  <script src="app.js"></script>
+  <!-- FUNCTIONS PAGE -->
+  <div class="page card" id="page-functions">
+    <h2>Functions</h2>
+    <div class="muted">Add systems that perform each function. Use “Run analysis” to rate/weight systems and get a winner.</div>
+    <div class="space"></div>
+
+    <div class="row">
+      <select id="functionPicker"></select>
+      <button class="btn" id="addFunction">Add function</button>
+      <button class="btn warn" id="deleteFunction">Delete function</button>
+      <button class="btn primary right" id="runAnalysis">Run analysis for selected function</button>
+    </div>
+
+    <div class="space"></div>
+    <div class="card">
+      <h3 id="fnTitle">Selected function</h3>
+      <div class="muted" id="fnHelp"></div>
+      <div class="space"></div>
+
+      <div>
+        <label class="muted">Systems for this function</label>
+        <div id="systemTags"></div>
+        <div class="row">
+          <input id="systemInput" type="text" placeholder="Add a system (press Enter)" />
+          <button class="btn" id="addSystem">Add</button>
+        </div>
+      </div>
+
+      <div class="space"></div>
+      <div class="kpis" id="fnKpis"></div>
+
+      <div class="hint">
+        Tips: add 2–5 systems then click “Run analysis”. Your ratings & weights save automatically.
+      </div>
+    </div>
+  </div>
+
+  <!-- TECH COMPARISON PAGE -->
+  <div class="page card" id="page-tech" style="display:none">
+    <h2>Tech Comparison (ad-hoc)</h2>
+    <div class="muted">Compare any systems (not tied to a specific function).</div>
+    <div class="space"></div>
+
+    <div class="row">
+      <input id="tcName" type="text" placeholder="Comparison name (e.g., Scheduler Options Q3)" />
+      <input id="tcSystems" type="text" placeholder="Systems (comma-separated)" style="min-width:360px" />
+      <button class="btn primary" id="tcStart">Start comparison</button>
+    </div>
+
+    <div id="tcBucket"></div>
+  </div>
+
+  <!-- SETTINGS PAGE -->
+  <div class="page card" id="page-settings" style="display:none">
+    <h2>Settings</h2>
+    <div class="muted">Defaults & data management.</div>
+    <div class="space"></div>
+
+    <div class="card">
+      <h3>Default function list</h3>
+      <div class="muted">Edit the master list used on first load. (Existing data won’t be overwritten.)</div>
+      <textarea id="defaultList" class="w100" rows="10"></textarea>
+      <div class="flex-end">
+        <button class="btn" id="saveDefaults">Save defaults</button>
+        <button class="btn warn" id="resetAll">Danger: Reset all data</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Backup & Restore</h3>
+      <div class="row">
+        <button class="btn" id="exportJson">Export JSON</button>
+        <input id="importFile" type="file" accept=".json" />
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ANALYSIS MODAL -->
+<div class="modalBack" id="modalBack" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="modalTop">
+      <h3 id="mTitle">Weighted Comparison</h3>
+      <div>
+        <button class="btn small" id="toggleCriteria">Shrink/Expand criteria</button>
+        <button class="btn small" id="mClose">Close</button>
+      </div>
+    </div>
+
+    <div class="space"></div>
+
+    <div class="collapseBox" id="criteriaBox">
+      <div class="collapseHead">
+        <div class="muted">Criteria & weights (must total 100%)</div>
+        <div class="row">
+          <button class="btn small" id="addCriterion">Add criterion</button>
+          <span class="pill" id="weightTotal">Total: 0%</span>
+        </div>
+      </div>
+      <div class="space"></div>
+      <div class="scrollX">
+        <table id="criteriaTable">
+          <thead>
+            <tr>
+              <th style="min-width:220px">Criterion</th>
+              <th class="nowrap">Weight %</th>
+              <th>Summary</th>
+              <th class="nowrap">Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="hint">Use 3–8 criteria. Examples: Feature fit, Reliability, Team familiarity, Compliance, Price, Support, Integration coverage.</div>
+    </div>
+
+    <div class="space"></div>
+
+    <div class="card">
+      <h3>Rate each system (1–5)</h3>
+      <div class="scrollX">
+        <table id="ratingTable">
+          <thead id="ratingHead"></thead>
+          <tbody id="ratingBody"></tbody>
+          <tfoot id="ratingFoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Notes & Action Items</h3>
+      <textarea id="analysisNotes" placeholder="Key findings, dependencies, risks…"></textarea>
+      <textarea id="analysisActions" placeholder="Action items (owner, due dates)…"></textarea>
+      <div class="flex-end">
+        <button class="btn" id="exportCsv">Export scores CSV</button>
+        <button class="btn primary" id="saveAnalysis">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---------- Storage Keys ----------
+  const LS_KEY = 'apps_functions_db_v1';
+  const DEFAULTS_KEY = 'apps_functions_defaults_v1';
+
+  // ---------- Default Function List ----------
+  const DEFAULT_FUNCTIONS = [
+    "Automation",
+    "Billing / Invoicing",
+    "Bookkeeping",
+    "Calendar",
+    "CRM",
+    "Custodian / TAMP",
+    "Data Aggregation",
+    "Data Gathering",
+    "eSignature",
+    "Email",
+    "Email Marketing",
+    "File Sharing / Document Storage",
+    "Financial Planning",
+    "Lead Generation",
+    "Mind Mapping",
+    "Notes Storage",
+    "Office Suite",
+    "Other Financial",
+    "Password Manager",
+    "Phone / Text",
+    "Pipeline Management",
+    "Project Management",
+    "Risk Tolerance",
+    "Scheduler",
+    "Task Management",
+    "Tax Planning",
+    "Tax Prep",
+    "Time Tracking",
+    "Transcription",
+    "Video Conferencing",
+    "Video Recording",
+    "Website",
+    "Other"
+  ];
+
+  // ---------- State ----------
+  let db = loadDB();
+  let currentFnId = db.functions[0]?.id || null;
+  let analysisCtx = null; // {name, systems[], fnId?}
+
+  // ---------- DOM helpers ----------
+  const $ = s=>document.querySelector(s);
+  const $$ = s=>Array.from(document.querySelectorAll(s));
+
+  // ---------- Init ----------
+  mountTabs();
+  mountSettings();
+  mountFunctionsPage();
+  mountTechPage();
+  ensureDefaults();
+  paintFunctionPicker();
+  paintFunctionDetail();
+
+  // ---------- Persistence ----------
+  function loadDB(){
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw){
+      try { return JSON.parse(raw); } catch(_){}
+    }
+    // first-run seed
+    return {
+      functions: DEFAULT_FUNCTIONS.map((name,i)=>({
+        id: 'fn_'+(i+1),
+        name,
+        systems: [],           // ["Calendly","Acuity",...]
+        analysis: {            // per-function saved comparison
+          criteria: [],        // [{id,name,weight,summary}]
+          ratings: {},         // { systemName: { criterionId: rating(1-5) } }
+          notes: "",
+          actions: ""
+        }
+      }))
+    };
+  }
+  function saveDB(){ localStorage.setItem(LS_KEY, JSON.stringify(db)); }
+
+  function ensureDefaults(){
+    const raw = localStorage.getItem(DEFAULTS_KEY);
+    if (!raw) localStorage.setItem(DEFAULTS_KEY, DEFAULT_FUNCTIONS.join('\n'));
+    $('#defaultList').value = localStorage.getItem(DEFAULTS_KEY);
+  }
+
+  // ---------- Tabs ----------
+  function mountTabs(){
+    $$('.tab').forEach(t=>{
+      t.addEventListener('click', ()=>{
+        $$('.tab').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        const page = t.dataset.page;
+        $$('.page').forEach(p=>p.style.display='none');
+        $('#page-'+page).style.display = '';
+      });
+    });
+  }
+
+  // ---------- Functions Page ----------
+  function mountFunctionsPage(){
+    $('#addFunction').addEventListener('click', ()=>{
+      const name = prompt('New function name:')?.trim();
+      if (!name) return;
+      const id = 'fn_'+Math.random().toString(36).slice(2,8);
+      db.functions.push({ id, name, systems: [], analysis:{criteria:[],ratings:{},notes:"",actions:""} });
+      currentFnId = id;
+      saveDB();
+      paintFunctionPicker();
+      paintFunctionDetail();
+    });
+
+    $('#deleteFunction').addEventListener('click', ()=>{
+      const fn = currentFn(); if (!fn) return;
+      if (!confirm(`Delete function "${fn.name}"?`)) return;
+      db.functions = db.functions.filter(f=>f.id!==fn.id);
+      currentFnId = db.functions[0]?.id || null;
+      saveDB();
+      paintFunctionPicker();
+      paintFunctionDetail();
+    });
+
+    $('#addSystem').addEventListener('click', addSystemFromInput);
+    $('#systemInput').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); addSystemFromInput(); } });
+
+    $('#runAnalysis').addEventListener('click', ()=>{
+      const fn = currentFn(); if(!fn) return;
+      openAnalysis({ name: fn.name, systems: fn.systems.slice(), fnId: fn.id });
+    });
+  }
+
+  function currentFn(){ return db.functions.find(f=>f.id===currentFnId) || null; }
+
+  function paintFunctionPicker(){
+    const sel = $('#functionPicker');
+    sel.innerHTML = '';
+    db.functions.forEach(f=>{
+      const o=document.createElement('option'); o.value=f.id; o.textContent=f.name;
+      sel.appendChild(o);
+    });
+    if (!currentFnId && db.functions.length) currentFnId = db.functions[0].id;
+    sel.value = currentFnId || '';
+    sel.onchange = ()=>{ currentFnId = sel.value; paintFunctionDetail(); };
+  }
+
+  function paintFunctionDetail(){
+    const fn = currentFn();
+    $('#fnTitle').textContent = fn ? fn.name : 'No function selected';
+    $('#fnHelp').textContent = fn ? 'Add systems involved in this function. You can analyze them with weights/ratings.' : '';
+    paintSystemTags();
+    paintFnKpis();
+  }
+
+  function addSystemFromInput(){
+    const fn = currentFn(); if(!fn) return;
+    const input = $('#systemInput');
+    const raw = (input.value||'').trim();
+    if (!raw) return;
+    raw.split(',').map(s=>s.trim()).filter(Boolean).forEach(name=>{
+      if (!fn.systems.includes(name)) fn.systems.push(name);
+    });
+    input.value = '';
+    saveDB();
+    paintSystemTags();
+    paintFnKpis();
+  }
+
+  function paintSystemTags(){
+    const fn = currentFn(); const host = $('#systemTags'); host.innerHTML='';
+    if (!fn){ host.innerHTML='<div class="muted">Select a function.</div>'; return; }
+    if (!fn.systems.length){ host.innerHTML='<div class="muted">No systems yet. Add some above.</div>'; return; }
+    fn.systems.forEach(name=>{
+      const tag=document.createElement('span'); tag.className='tag';
+      tag.innerHTML = `<span>${name}</span><span class="x" title="Remove">✕</span>`;
+      tag.querySelector('.x').onclick = ()=>{
+        fn.systems = fn.systems.filter(s=>s!==name);
+        // also drop ratings for removed system
+        if (fn.analysis?.ratings && fn.analysis.ratings[name]) delete fn.analysis.ratings[name];
+        saveDB(); paintSystemTags(); paintFnKpis();
+      };
+      host.appendChild(tag);
+    });
+  }
+
+  function paintFnKpis(){
+    const fn = currentFn(); const k = $('#fnKpis'); k.innerHTML='';
+    if(!fn) return;
+    const critCount = fn.analysis?.criteria?.length || 0;
+    const systems = fn.systems.length;
+    const saved = (critCount && Object.keys(fn.analysis?.ratings||{}).length) ? 'Yes' : 'No';
+    [
+      {label:'Systems', val: systems},
+      {label:'Criteria', val: critCount},
+      {label:'Saved analysis', val: saved}
+    ].forEach(x=>{
+      const d=document.createElement('div'); d.className='kpi';
+      d.innerHTML = `<div class="muted">${x.label}</div><div style="font-weight:600">${x.val}</div>`;
+      k.appendChild(d);
+    });
+  }
+
+  // ---------- Tech Comparison (ad-hoc) ----------
+  function mountTechPage(){
+    $('#tcStart').addEventListener('click', ()=>{
+      const name = ($('#tcName').value||'Untitled Comparison').trim();
+      const systems = ($('#tcSystems').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+      if (systems.length<2){ alert('Enter at least two systems.'); return; }
+      openAnalysis({ name, systems });
+    });
+  }
+
+  // ---------- Analysis Modal ----------
+  const modalBack = $('#modalBack');
+  const mClose = $('#mClose');
+  mClose.onclick = ()=> closeAnalysis();
+  $('#toggleCriteria').onclick = ()=>{
+    const box = $('#criteriaBox');
+    const hidden = box.style.display==='none';
+    box.style.display = hidden ? '' : 'none';
+  };
+
+  function openAnalysis(ctx){
+    analysisCtx = ctx; // {name, systems[], fnId?}
+    $('#mTitle').textContent = `Weighted Comparison — ${ctx.name}`;
+    modalBack.style.display = 'flex';
+
+    // derive working model from saved (if any)
+    let model = { criteria:[], ratings:{}, notes:"", actions:"" };
+    if (ctx.fnId){
+      const fn = db.functions.find(f=>f.id===ctx.fnId);
+      if (fn && fn.analysis) model = JSON.parse(JSON.stringify(fn.analysis));
+    }
+    // ensure ratings keys exist for systems
+    ctx.systems.forEach(sys=>{
+      if (!model.ratings[sys]) model.ratings[sys] = {};
+    });
+
+    paintCriteriaTable(model);
+    paintRatingTable(model, ctx.systems);
+    $('#analysisNotes').value = model.notes||'';
+    $('#analysisActions').value = model.actions||'';
+
+    // handlers
+    $('#addCriterion').onclick = ()=>{
+      model.criteria.push({ id: uid(), name:'New criterion', weight:0, summary:'' });
+      paintCriteriaTable(model); paintRatingTable(model, ctx.systems);
+    };
+    $('#saveAnalysis').onclick = ()=>{
+      model.notes = $('#analysisNotes').value;
+      model.actions = $('#analysisActions').value;
+      if (ctx.fnId){
+        const fn = db.functions.find(f=>f.id===ctx.fnId);
+        if (fn){ fn.analysis = model; saveDB(); paintFnKpis(); }
+      }
+      alert('Saved.');
+    };
+    $('#exportCsv').onclick = ()=> exportScoresCsv(model, ctx);
+  }
+
+  function closeAnalysis(){ modalBack.style.display='none'; analysisCtx=null; }
+
+  function paintCriteriaTable(model){
+    const tb = $('#criteriaTable tbody'); tb.innerHTML='';
+    model.criteria.forEach((c,idx)=>{
+      const tr=document.createElement('tr');
+      const td1=document.createElement('td');
+      const td2=document.createElement('td');
+      const td3=document.createElement('td');
+      const td4=document.createElement('td');
+
+      const nameIn = inputText(c.name, v=>{ c.name=v; paintRatingTable(model, analysisCtx.systems); });
+      nameIn.style.minWidth='220px';
+      const wIn = document.createElement('input'); wIn.type='number'; wIn.min=0; wIn.max=100; wIn.step='1';
+      wIn.value = Number(c.weight||0);
+      wIn.oninput = ()=>{ c.weight = clampNum(wIn.value,0,100); updateWeightTotal(model); };
+      const sumIn = inputText(c.summary, v=> c.summary=v);
+
+      const del = document.createElement('button'); del.className='btn small'; del.textContent='Delete';
+      del.onclick = ()=>{ model.criteria.splice(idx,1); paintCriteriaTable(model); paintRatingTable(model, analysisCtx.systems); };
+
+      td1.appendChild(nameIn);
+      td2.appendChild(wIn);
+      td3.appendChild(sumIn);
+      td4.appendChild(del);
+
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4);
+      tb.appendChild(tr);
+    });
+    updateWeightTotal(model);
+  }
+
+  function updateWeightTotal(model){
+    const total = model.criteria.reduce((s,c)=>s + (Number(c.weight)||0), 0);
+    const pill = $('#weightTotal');
+    pill.textContent = `Total: ${total}%`;
+    pill.style.background = total===100 ? '#ecfdf5' : '#fff7ed';
+    pill.style.borderColor = total===100 ? '#bbf7d0' : '#fed7aa';
+    paintRatingTable(model, analysisCtx.systems); // refresh scores
+  }
+
+  function paintRatingTable(model, systems){
+    const head = $('#ratingHead'); const body=$('#ratingBody'); const foot=$('#ratingFoot');
+    head.innerHTML=''; body.innerHTML=''; foot.innerHTML='';
+
+    // header
+    const trh=document.createElement('tr');
+    trh.innerHTML = `<th style="min-width:220px">Criterion</th>` + systems.map(s=>`<th>${esc(s)}</th>`).join('') + `<th>Weight</th>`;
+    head.appendChild(trh);
+
+    // rows per criterion (rating select 1–5)
+    model.criteria.forEach(c=>{
+      const tr=document.createElement('tr');
+      const left=document.createElement('td'); left.textContent=c.name||'—';
+      tr.appendChild(left);
+
+      systems.forEach(sys=>{
+        const td=document.createElement('td');
+        td.appendChild(ratingSelect(model, sys, c.id, val=>{
+          model.ratings[sys] = model.ratings[sys] || {};
+          model.ratings[sys][c.id] = val;
+          paintScoresFoot(model, systems);
+        }));
+        tr.appendChild(td);
+      });
+
+      const wt=document.createElement('td'); wt.textContent = `${Number(c.weight||0)}%`;
+      tr.appendChild(wt);
+
+      body.appendChild(tr);
+    });
+
+    paintScoresFoot(model, systems);
+  }
+
+  function ratingSelect(model, system, critId, onChange){
+    const sel=document.createElement('select');
+    [ '',1,2,3,4,5 ].forEach(v=>{
+      const o=document.createElement('option');
+      o.value=String(v); o.textContent = v==='' ? '—' : String(v);
+      sel.appendChild(o);
+    });
+    const cur = model.ratings?.[system]?.[critId] ?? '';
+    sel.value = String(cur);
+    sel.onchange = ()=> onChange(Number(sel.value||0));
+    return sel;
+  }
+
+  function paintScoresFoot(model, systems){
+    const foot=$('#ratingFoot'); foot.innerHTML='';
+    const total=document.createElement('tr');
+    let best = { sys:null, score:-Infinity };
+
+    const weightTotal = model.criteria.reduce((s,c)=>s+(Number(c.weight)||0),0);
+    const warn = weightTotal!==100;
+
+    // compute scores
+    const scores = {};
+    systems.forEach(sys=>{
+      let s=0;
+      model.criteria.forEach(c=>{
+        const r = Number(model.ratings?.[sys]?.[c.id] || 0);
+        const w = Number(c.weight||0);
+        s += r * w; // (we’ll divide by 100 later)
+      });
+      const norm = s/100; // 5 * 100% = 5 max
+      scores[sys]=norm;
+      if (norm>best.score) best={sys, score:norm};
+    });
+
+    // header row for scores
+    const trh=document.createElement('tr');
+    trh.innerHTML = `<th>Weighted Score (max 5.00)</th>` + systems.map(s=>`<th>${esc(s)}</th>`).join('') + `<th></th>`;
+    foot.appendChild(trh);
+
+    // score row
+    total.appendChild(cell('Overall'));
+    systems.forEach(sys=>{
+      const sc = scores[sys] || 0;
+      const td = cell(sc.toFixed(2));
+      if (sys===best.sys && !warn) td.classList.add('scoreWin');
+      total.appendChild(td);
+    });
+    total.appendChild(cell(warn ? 'Weights ≠ 100%' : 'OK'));
+    foot.appendChild(total);
+  }
+
+  // ---------- Utilities ----------
+  function cell(txt){ const td=document.createElement('td'); td.textContent=txt; return td; }
+  function inputText(val, onChange){
+    const i=document.createElement('input'); i.type='text'; i.value=val||'';
+    i.oninput = ()=> onChange(i.value);
+    return i;
+  }
+  function uid(){ return 'c_'+Math.random().toString(36).slice(2,9); }
+  function clampNum(v,min,max){ const n=Number(v||0); return isNaN(n)?min:Math.max(min,Math.min(max,n)); }
+  function esc(s){ return String(s).replace(/[&<>"]/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[m]); }
+
+  function exportScoresCsv(model, ctx){
+    const crit = model.criteria;
+    const systems = ctx.systems;
+    // header
+    const head = ['Criterion','Weight %'].concat(systems).join(',');
+    const rows = [head];
+    // per-criterion
+    crit.forEach(c=>{
+      const row=[csv(c.name), String(c.weight)];
+      systems.forEach(sys=>{
+        const r = model.ratings?.[sys]?.[c.id] ?? '';
+        row.push(String(r));
+      });
+      rows.push(row.join(','));
+    });
+    // totals
+    rows.push('');
+    rows.push('Overall weighted score,,,');
+
+    const scores = systems.map(sys=>{
+      let s=0; crit.forEach(c=>{ s += (Number(model.ratings?.[sys]?.[c.id]||0) * Number(c.weight||0)); });
+      return (s/100).toFixed(2);
+    });
+    rows.push(['', '', ...scores].join(','));
+
+    const blob = new Blob([rows.join('\n')], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`${ctx.name.replace(/\s+/g,'_')}_comparison.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+
+    function csv(s){ return `"${String(s||'').replace(/"/g,'""')}"`; }
+  }
+
+  // ---------- Settings ----------
+  function mountSettings(){
+    $('#saveDefaults').onclick = ()=>{
+      const txt = ($('#defaultList').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+      localStorage.setItem(DEFAULTS_KEY, txt.join('\n'));
+      alert('Defaults saved.');
+    };
+    $('#resetAll').onclick = ()=>{
+      if(!confirm('This will clear all functions, systems, and analyses. Continue?')) return;
+      localStorage.removeItem(LS_KEY);
+      location.reload();
+    };
+    $('#exportJson').onclick = ()=>{
+      const blob = new Blob([JSON.stringify(db,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='apps_functions_backup.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+    };
+    $('#importFile').onchange = async (e)=>{
+      const f=e.target.files?.[0]; if(!f) return;
+      const text = await f.text();
+      try{
+        const obj=JSON.parse(text);
+        if(!obj || !Array.isArray(obj.functions)) throw new Error('Invalid backup.');
+        db=obj; saveDB(); currentFnId = db.functions[0]?.id || null;
+        paintFunctionPicker(); paintFunctionDetail();
+        alert('Imported.');
+      }catch(err){ alert('Import failed: '+err.message); }
+    };
+  }
+
+  // ---------- UI bits for Tech Comparison bucket ----------
+  function renderTechBucket(){ /* placeholder for future list of saved ad-hoc comps */ }
+
+  // initial render
+  renderTechBucket();
+})();
+</script>
 </body>
 </html>
