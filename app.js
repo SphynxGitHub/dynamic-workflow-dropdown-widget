@@ -165,7 +165,7 @@
   const routes = {
     '/apps': renderApps,
     '/apps/functions': renderFunctions,
-    '/apps/tech': renderTech,
+    '/apps/tech': renderTechComparison,
     '/resources': renderFunctions,
     '/resources/zaps': renderZaps,
     '/resources/forms': renderForms,
