@@ -521,24 +521,6 @@
     draw();
   }
 
-   // 2) RENDERER: minimal Tech Comparison page (stub or reuse your comparator later)
-   function renderTechComparison(el){
-     el.innerHTML = `
-       <div class="card sticky">
-         <h2>Tech Comparison</h2>
-         <div class="row">
-           <div class="muted">Run weighted comparisons between tools. (Hook your existing comparator here.)</div>
-           <div class="spacer"></div>
-           <button class="btn small" id="newCompare">New Comparison</button>
-         </div>
-       </div>
-   
-       <div class="card">
-         <div id="techList" class="muted">No comparisons yet.</div>
-       </div>
-     `;
-   }
-
   // Zaps (unchanged)
   function renderZaps(el){
     const wrap = document.createElement('div');
