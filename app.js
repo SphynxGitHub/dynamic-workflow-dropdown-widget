@@ -164,6 +164,8 @@
   // ---------- Routing ----------
   const routes = {
     '/apps': renderApps,
+    '/apps/functions': renderFunctions,
+    '/apps/tech': renderTech,
     '/resources': renderFunctions,
     '/resources/zaps': renderZaps,
     '/resources/forms': renderForms,
