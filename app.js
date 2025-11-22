@@ -668,52 +668,372 @@
 
     renderTable();
   }
+   state.stepTemplates = state.stepTemplates || [
+     // Minimal, opinionated defaults you can edit in the UI later
+     { id: uid(), type:'Schedule Meeting',    title:'Schedule Meeting',    notes:'Send scheduling link; confirm agenda; share pre-reads', checklist:['Send link','Confirm agenda','Attach docs'] },
+     { id: uid(), type:'Pre-Meeting Prep',    title:'Prep for Meeting',    notes:'Review CRM notes; prep questions; confirm objectives',   checklist:['Review notes','Prep questions','Confirm objectives'] },
+     { id: uid(), type:'Conduct Meeting',     title:'Conduct Meeting',     notes:'Run agenda; capture decisions; assign owners',          checklist:['Run agenda','Capture decisions','Assign owners'] },
+     { id: uid(), type:'Post-Meeting Prep',   title:'Post-Meeting Prep',   notes:'Clean notes; draft recap; create tasks',                 checklist:['Clean notes','Draft recap','Create tasks'] },
+     { id: uid(), type:'Conduct Phone Call',  title:'Phone Call',          notes:'Outline call purpose; log outcome',                      checklist:['Outline call','Log outcome'] },
+     { id: uid(), type:'Send Email',          title:'Send Email',          notes:'Draft clear subject; bullets; call to action',           checklist:['Write subject','Bullets','CTA'] },
+     { id: uid(), type:'Send Text Message',   title:'Send Text',           notes:'Keep short; include link if needed',                     checklist:['Short copy','Link (optional)'] },
+     { id: uid(), type:'Request Item',        title:'Request Item',        notes:'Specify format; due date; where to upload',              checklist:['Specify format','Set due date','Share upload link'] },
+     { id: uid(), type:'Follow Up',           title:'Follow Up',           notes:'Reference context; restate ask; next step',              checklist:['Reference context','Restate ask','Next step'] },
+     { id: uid(), type:'Item Received',       title:'Item Received',       notes:'Verify completeness; file docs; notify assignee',        checklist:['Verify','File','Notify'] },
+     { id: uid(), type:'Task',                title:'Task',                notes:'Atomic action; definition of done; owner',               checklist:['Define done','Assign owner'] },
+   ];
+   
+   // Migrate legacy flat steps -> one default workflow
+   if (Array.isArray(state.workflows) && state.workflows.length && !state.workflows[0]?.steps) {
+     state.workflows = [{
+       id: uid(),
+       name: 'General',
+       notes: '',
+       steps: state.workflows.map(s => ({
+         id: uid(),
+         type: s.type || 'Task',
+         title: s.step || s.title || 'Step',
+         notes: s.notes || '',
+         assignee: s.assignee || '',
+         dueOffsetDays: Number(s.dueOffsetDays || 0),
+         checklist: Array.isArray(s.checklist) ? s.checklist.slice() : [],
+       }))
+     }];
+     persist();
+   }
+   // Ensure workflows exists
+   state.workflows = state.workflows || [];
 
   // Workflows (light scratchpad)
   function renderWorkflows(el){
-    el.innerHTML = `
-      <div class="card sticky">
-        <h2>Workflows</h2>
-        <div class="row"><div class="muted">Sketch your flow items; we can wire your visualizer next.</div></div>
-      </div>
-      <div class="grid cols-2">
-        <div class="card">
-          <h3>Steps</h3>
-          <div id="wfSteps"></div>
-          <div class="row" style="margin-top:8px"><button class="btn small" id="addStep">Add Step</button></div>
-        </div>
-        <div class="card"><h3>Preview</h3><div class="muted">Placeholder for canvas visual.</div></div>
-      </div>
-    `;
-    function draw(){
-      const box = $('#wfSteps', el); box.innerHTML='';
-      const t = document.createElement('table');
-      t.innerHTML = `<thead><tr><th>Stage</th><th>Step Name</th><th>Notes</th><th></th></tr></thead><tbody></tbody>`;
-      const tb = t.querySelector('tbody');
-      state.workflows.forEach(w=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><input type="text" value="${esc(w.stage||'')}" data-f="stage"></td>
-          <td><input type="text" value="${esc(w.step||'')}" data-f="step"></td>
-          <td><input type="text" value="${esc(w.notes||'')}" data-f="notes"></td>
-          <td><button class="btn small" data-act="del">Delete</button></td>
-        `;
-        tr.querySelectorAll('[data-f]').forEach(inp=>{
-          inp.addEventListener('input', ()=>{ w[inp.getAttribute('data-f')] = inp.value; persist(); });
-        });
-        tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{
-          if(!confirm('Delete step?')) return;
-          state.workflows = state.workflows.filter(x=>x.id!==w.id); persist(); draw();
-        });
-        tb.appendChild(tr);
-      });
-      box.appendChild(t);
-    }
-    $('#addStep', el).addEventListener('click', ()=>{
-      state.workflows.unshift({ id:uid(), stage:'', step:'', notes:'' }); persist(); draw();
-    });
-    draw();
-  }
+     const wrap = document.createElement('div');
+     wrap.innerHTML = `
+       <div class="card sticky">
+         <h2>Workflows</h2>
+         <div class="row">
+           <div class="muted">Templates → drag into a workflow. Duplicate & rearrange freely.</div>
+           <div class="spacer"></div>
+           <button class="btn small" id="newWorkflow">New Workflow</button>
+         </div>
+       </div>
+   
+       <div class="grid cols-3">
+         <!-- Templates -->
+         <div class="card">
+           <h3>Step Templates</h3>
+           <div class="row" style="margin-bottom:8px">
+             <input type="text" id="tplSearch" placeholder="Search templates…">
+             <select id="tplType">
+               <option value="">All Types</option>
+               ${dedupe(state.stepTemplates.map(t=>t.type)).map(t=>`<option>${esc(t)}</option>`).join('')}
+             </select>
+             <div class="spacer"></div>
+             <button class="btn small" id="addTpl">Add Template</button>
+           </div>
+           <div id="tplList"></div>
+         </div>
+   
+         <!-- Steps for selected workflow -->
+         <div class="card">
+           <div class="row" style="align-items:center">
+             <h3 style="margin:0">Workflow Steps</h3>
+             <div class="spacer"></div>
+             <span class="pill" id="wfMeta"></span>
+           </div>
+           <div class="notice" style="margin:6px 0">Tip: drag rows to reorder. Click ▸ to expand details.</div>
+           <table id="stepTable">
+             <thead>
+               <tr><th style="width:32px"></th><th>Type</th><th>Title</th><th>Assignee</th><th>Due (days)</th><th></th></tr>
+             </thead>
+             <tbody></tbody>
+           </table>
+           <div class="row" style="margin-top:10px">
+             <button class="btn small" id="addBlankStep">Add Blank Step</button>
+             <div class="spacer"></div>
+             <button class="btn small" id="duplicateWorkflow">Duplicate Workflow</button>
+           </div>
+         </div>
+   
+         <!-- Workflow selector -->
+         <div class="card">
+           <h3>Workflows</h3>
+           <div id="wfList"></div>
+         </div>
+       </div>
+     `;
+     el.appendChild(wrap);
+   
+     // ------- Local selection state -------
+     let selectedWfId = (state.workflows[0]?.id) || null;
+   
+     // ------- Templates panel -------
+     const $tplList = $('#tplList', wrap);
+     const $tplSearch = $('#tplSearch', wrap);
+     const $tplType = $('#tplType', wrap);
+   
+     function drawTemplates(){
+       const q = ($tplSearch.value||'').toLowerCase().trim();
+       const ty = $tplType.value || '';
+       const rows = state.stepTemplates.filter(t=>{
+         const okT = !ty || t.type === ty;
+         const okQ = !q || [t.type,t.title,t.notes,(t.checklist||[]).join(' ')].join(' ').toLowerCase().includes(q);
+         return okT && okQ;
+       });
+       const t = document.createElement('table');
+       t.innerHTML = `<thead><tr><th>Type</th><th>Title</th><th></th></tr></thead><tbody></tbody>`;
+       const tb = t.querySelector('tbody');
+       rows.forEach(tpl=>{
+         const tr = document.createElement('tr');
+         tr.innerHTML = `
+           <td>${esc(tpl.type)}</td>
+           <td>${esc(tpl.title)}</td>
+           <td style="text-align:right">
+             <button class="btn small" data-act="insert">Insert</button>
+             <button class="btn small" data-act="edit">Edit</button>
+             <button class="btn small" data-act="del">Delete</button>
+           </td>`;
+         tr.querySelector('[data-act="insert"]').addEventListener('click', ()=> insertTemplate(tpl));
+         tr.querySelector('[data-act="edit"]').addEventListener('click', ()=> editTemplate(tpl));
+         tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{
+           if(!confirm('Delete template?')) return;
+           state.stepTemplates = state.stepTemplates.filter(x=>x.id!==tpl.id);
+           persist(); drawTemplates();
+         });
+         tb.appendChild(tr);
+       });
+       $tplList.innerHTML = '';
+       $tplList.appendChild(t);
+     }
+   
+     $('#addTpl', wrap).addEventListener('click', ()=>{
+       const tpl = { id: uid(), type:'Task', title:'New Template', notes:'', checklist:[] };
+       state.stepTemplates.unshift(tpl); persist(); editTemplate(tpl);
+     });
+     $tplSearch.addEventListener('input', drawTemplates);
+     $tplType.addEventListener('change', drawTemplates);
+   
+     function editTemplate(tpl){
+       const panel = document.createElement('div');
+       panel.className = 'card';
+       panel.style.marginTop = '10px';
+       panel.innerHTML = `
+         <h3>Edit Template</h3>
+         <div class="grid cols-2">
+           <div>
+             <label>Type</label>
+             <select id="et_type">
+               ${dedupe(['Schedule Meeting','Pre-Meeting Prep','Conduct Meeting','Post-Meeting Prep','Conduct Phone Call','Send Email','Send Text Message','Request Item','Follow Up','Item Received','Task']).map(t=>`<option ${tpl.type===t?'selected':''}>${esc(t)}</option>`).join('')}
+             </select>
+           </div>
+           <div>
+             <label>Title</label>
+             <input type="text" id="et_title" value="${esc(tpl.title||'')}">
+           </div>
+         </div>
+         <label style="margin-top:8px">Notes</label>
+         <textarea id="et_notes">${esc(tpl.notes||'')}</textarea>
+         <label style="margin-top:8px">Checklist (one per line)</label>
+         <textarea id="et_chk">${esc((tpl.checklist||[]).join('\n'))}</textarea>
+         <div class="row" style="margin-top:8px">
+           <button class="btn small" id="et_save">Save</button>
+         </div>
+       `;
+       $tplList.appendChild(panel);
+       $('#et_save', panel).addEventListener('click', ()=>{
+         tpl.type = $('#et_type', panel).value;
+         tpl.title = $('#et_title', panel).value;
+         tpl.notes = $('#et_notes', panel).value;
+         tpl.checklist = ($('#et_chk', panel).value || '').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+         persist(); drawTemplates();
+       });
+     }
+   
+     function insertTemplate(tpl){
+       const wf = getSelectedWorkflow(); if(!wf) return alert('Create/select a workflow first.');
+       wf.steps.push(realizeStepFromTemplate(tpl));
+       persist(); drawSteps();
+     }
+   
+     function realizeStepFromTemplate(tpl){
+       return {
+         id: uid(),
+         type: tpl.type,
+         title: tpl.title,
+         notes: tpl.notes || '',
+         assignee: '',
+         dueOffsetDays: 0,
+         checklist: (tpl.checklist||[]).slice(),
+         _open: false
+       };
+     }
+   
+     // ------- Workflow list -------
+     const $wfList = $('#wfList', wrap);
+     function getSelectedWorkflow(){ return state.workflows.find(w=>w.id===selectedWfId) || null; }
+   
+     function drawWorkflows(){
+       const box = document.createElement('div');
+       (state.workflows||[]).forEach(w=>{
+         const row = document.createElement('div');
+         row.style.display='flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.margin='6px 0';
+         row.innerHTML = `
+           <input type="radio" name="wfSel" ${w.id===selectedWfId?'checked':''}>
+           <input type="text" value="${esc(w.name||'')}" style="flex:1">
+           <button class="btn small" data-act="del">Delete</button>
+         `;
+         const [radio, nameInp] = row.querySelectorAll('input');
+         radio.addEventListener('change', ()=>{ selectedWfId = w.id; drawSteps(); drawMeta(); });
+         nameInp.addEventListener('input', ()=>{ w.name = nameInp.value; persist(); drawMeta(); });
+         row.querySelector('[data-act="del"]').addEventListener('click', ()=>{
+           if(!confirm('Delete workflow?')) return;
+           state.workflows = state.workflows.filter(x=>x.id!==w.id);
+           if(selectedWfId===w.id) selectedWfId = state.workflows[0]?.id || null;
+           persist(); drawWorkflows(); drawSteps(); drawMeta();
+         });
+         box.appendChild(row);
+       });
+       $wfList.innerHTML = '';
+       if(!state.workflows.length){
+         const p = document.createElement('div');
+         p.className='muted'; p.textContent = 'No workflows yet.';
+         $wfList.appendChild(p);
+       }
+       $wfList.appendChild(box);
+     }
+   
+     $('#newWorkflow', wrap).addEventListener('click', ()=>{
+       const wf = { id:uid(), name:'New Workflow', notes:'', steps:[] };
+       state.workflows.unshift(wf); selectedWfId = wf.id; persist();
+       drawWorkflows(); drawSteps(); drawMeta();
+     });
+   
+     $('#duplicateWorkflow', wrap).addEventListener('click', ()=>{
+       const src = getSelectedWorkflow(); if(!src) return;
+       const copy = JSON.parse(JSON.stringify(src));
+       copy.id = uid(); copy.name = src.name + ' (Copy)';
+       copy.steps.forEach(s=> s.id = uid());
+       state.workflows.unshift(copy); selectedWfId = copy.id; persist();
+       drawWorkflows(); drawSteps(); drawMeta();
+     });
+   
+     // ------- Steps table with drag & drop -------
+     const $tb = $('#stepTable tbody', wrap);
+     const $wfMeta = $('#wfMeta', wrap);
+   
+     function drawMeta(){
+       const wf = getSelectedWorkflow();
+       $wfMeta.textContent = wf ? `${wf.name} — ${wf.steps.length} step${wf.steps.length===1?'':'s'}` : 'No workflow selected';
+     }
+   
+     function drawSteps(){
+       const wf = getSelectedWorkflow();
+       $tb.innerHTML = '';
+       if(!wf){ drawMeta(); return; }
+   
+       wf.steps.forEach((s, idx)=>{
+         const tr = document.createElement('tr');
+         tr.draggable = true;
+         tr.dataset.id = s.id;
+         tr.innerHTML = `
+           <td style="cursor:grab">↕</td>
+           <td>
+             <select class="s_type">
+               ${dedupe(['Schedule Meeting','Pre-Meeting Prep','Conduct Meeting','Post-Meeting Prep','Conduct Phone Call','Send Email','Send Text Message','Request Item','Follow Up','Item Received','Task']).map(t=>`<option ${s.type===t?'selected':''}>${esc(t)}</option>`).join('')}
+             </select>
+           </td>
+           <td><input type="text" class="s_title" value="${esc(s.title||'')}"></td>
+           <td><input type="text" class="s_assignee" value="${esc(s.assignee||'')}" placeholder="Owner"></td>
+           <td><input type="number" class="s_due" value="${Number(s.dueOffsetDays||0)}" style="width:90px"></td>
+           <td style="text-align:right">
+             <button class="btn small" data-act="expand">${s._open?'▾':'▸'}</button>
+             <button class="btn small" data-act="dup">Duplicate</button>
+             <button class="btn small" data-act="del">Delete</button>
+           </td>
+         `;
+         // details row (notes + checklist)
+         const det = document.createElement('tr');
+         det.style.display = s._open ? '' : 'none';
+         det.innerHTML = `
+           <td></td>
+           <td colspan="5">
+             <div class="grid cols-2">
+               <div>
+                 <label>Notes</label>
+                 <textarea class="s_notes">${esc(s.notes||'')}</textarea>
+               </div>
+               <div>
+                 <label>Checklist (one per line)</label>
+                 <textarea class="s_chk">${esc((s.checklist||[]).join('\n'))}</textarea>
+               </div>
+             </div>
+           </td>
+         `;
+   
+         // wire edits
+         tr.querySelector('.s_type').addEventListener('change', e=>{ s.type = e.target.value; persist(); });
+         tr.querySelector('.s_title').addEventListener('input', e=>{ s.title = e.target.value; persist(); });
+         tr.querySelector('.s_assignee').addEventListener('input', e=>{ s.assignee = e.target.value; persist(); });
+         tr.querySelector('.s_due').addEventListener('input', e=>{ s.dueOffsetDays = Number(e.target.value||0); persist(); });
+         det.querySelector('.s_notes').addEventListener('input', e=>{ s.notes = e.target.value; persist(); });
+         det.querySelector('.s_chk').addEventListener('input', e=>{
+           s.checklist = e.target.value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+           persist();
+         });
+   
+         // row actions
+         tr.querySelector('[data-act="expand"]').addEventListener('click', ()=>{
+           s._open = !s._open; det.style.display = s._open ? '' : 'none';
+           tr.querySelector('[data-act="expand"]').textContent = s._open ? '▾' : '▸';
+           persist();
+         });
+         tr.querySelector('[data-act="dup"]').addEventListener('click', ()=>{
+           const clone = JSON.parse(JSON.stringify(s)); clone.id = uid();
+           const pos = wf.steps.findIndex(x=>x.id===s.id);
+           wf.steps.splice(pos+1, 0, clone); persist(); drawSteps(); drawMeta();
+         });
+         tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{
+           if(!confirm('Delete step?')) return;
+           wf.steps = wf.steps.filter(x=>x.id!==s.id); persist(); drawSteps(); drawMeta();
+         });
+   
+         // drag & drop handlers
+         tr.addEventListener('dragstart', e=>{
+           e.dataTransfer.setData('text/plain', s.id);
+           tr.style.opacity = '.5';
+         });
+         tr.addEventListener('dragend', ()=> tr.style.opacity = '');
+         tr.addEventListener('dragover', e=> e.preventDefault());
+         tr.addEventListener('drop', e=>{
+           e.preventDefault();
+           const draggedId = e.dataTransfer.getData('text/plain');
+           if (!draggedId || draggedId === s.id) return;
+           const srcIdx = wf.steps.findIndex(x=>x.id===draggedId);
+           const dstIdx = wf.steps.findIndex(x=>x.id===s.id);
+           if (srcIdx === -1 || dstIdx === -1) return;
+           const [moved] = wf.steps.splice(srcIdx,1);
+           wf.steps.splice(dstIdx,0,moved);
+           persist(); drawSteps(); drawMeta();
+         });
+   
+         $tb.appendChild(tr);
+         $tb.appendChild(det);
+       });
+   
+       drawMeta();
+     }
+   
+     $('#addBlankStep', wrap).addEventListener('click', ()=>{
+       const wf = getSelectedWorkflow(); if(!wf) return alert('Create/select a workflow first.');
+       wf.steps.push({ id:uid(), type:'Task', title:'New Step', assignee:'', dueOffsetDays:0, notes:'', checklist:[], _open:true });
+       persist(); drawSteps(); drawMeta();
+     });
+   
+     // initial paints
+     drawTemplates();
+     drawWorkflows();
+     drawSteps();
+     drawMeta();
+   } 
 
   // Scheduling (placeholder)
   function renderScheduling(el){
