@@ -229,7 +229,93 @@
   function renderNotFound(el){
     el.innerHTML = `<div class="card"><h2>Not Found</h2><div class="muted">No route for ${currentPath()}</div></div>`;
   }
-
+   function renderTechComparison(el){
+     // basic scaffold
+     el.innerHTML = `
+       <div class="card sticky">
+         <h2>Tech Comparison</h2>
+         <div class="row">
+           <div class="muted">Pick apps to compare, add criteria & weights, then score.</div>
+           <div class="spacer"></div>
+         </div>
+       </div>
+   
+       <div class="card">
+         <div class="row" style="margin-bottom:8px">
+           <label style="min-width:120px">Compare Apps</label>
+           <select id="tcApps" multiple size="6" style="min-width:280px">
+             ${ (state.apps||[]).map(a=>`<option value="${esc(a.id)}">${esc(a.name)} (${esc(a.category||'Other')})</option>`).join('') }
+           </select>
+         </div>
+   
+         <div class="row" style="margin:10px 0">
+           <button class="btn small" id="addCriterion">Add Criterion</button>
+         </div>
+   
+         <table id="tcTable">
+           <thead>
+             <tr><th>Criterion</th><th>Weight (0–5)</th><th>Notes</th><th></th></tr>
+           </thead>
+           <tbody></tbody>
+         </table>
+   
+         <div class="row" style="margin-top:12px">
+           <button class="btn primary small" id="calcScores">Run Analysis</button>
+           <div class="spacer"></div>
+           <div id="tcResult" class="pill">No results yet</div>
+         </div>
+       </div>
+     `;
+   
+     // local state for the page only
+     const page = { criteria: [] };
+   
+     const tbody = el.querySelector('#tcTable tbody');
+     function drawCriteria(){
+       tbody.innerHTML = '';
+       page.criteria.forEach(c=>{
+         const tr = document.createElement('tr');
+         tr.innerHTML = `
+           <td><input type="text" value="${esc(c.name||'')}" placeholder="e.g., Compliance fit"></td>
+           <td><input type="number" min="0" max="5" step="0.5" value="${Number(c.weight||0)}"></td>
+           <td><input type="text" value="${esc(c.notes||'')}" placeholder="Scoring notes"></td>
+           <td><button class="btn small" data-act="del">Delete</button></td>
+         `;
+         const [nameInp, weightInp, notesInp] = tr.querySelectorAll('input');
+         nameInp.addEventListener('input', ()=> c.name = nameInp.value);
+         weightInp.addEventListener('input', ()=> c.weight = Number(weightInp.value||0));
+         notesInp.addEventListener('input', ()=> c.notes = notesInp.value);
+         tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{
+           page.criteria = page.criteria.filter(x=>x!==c); drawCriteria();
+         });
+         tbody.appendChild(tr);
+       });
+     }
+   
+     el.querySelector('#addCriterion').addEventListener('click', ()=>{
+       page.criteria.push({ name:'', weight:0, notes:'' });
+       drawCriteria();
+     });
+   
+     el.querySelector('#calcScores').addEventListener('click', ()=>{
+       const selApps = Array.from(el.querySelector('#tcApps').selectedOptions).map(o=>o.value);
+       if (!selApps.length) { alert('Pick at least one app.'); return; }
+       if (!page.criteria.length) { alert('Add at least one criterion.'); return; }
+   
+       // trivial equal scoring stub (you’ll replace with real per-app scoring UI)
+       const totalWeight = page.criteria.reduce((s,c)=> s + Number(c.weight||0), 0) || 1;
+       const result = selApps.map(id=>{
+         const app = (state.apps||[]).find(a=>a.id===id);
+         // Right now: each criterion contributes its weight (max score = totalWeight)
+         const score = totalWeight;
+         return { id, name: app?.name || id, score };
+       }).sort((a,b)=> b.score - a.score);
+   
+       el.querySelector('#tcResult').textContent = `Rank: ${result.map(r=>`${r.name} (${r.score})`).join('  ·  ')}`;
+     });
+   
+     drawCriteria();
+   }
   // Apps page (unchanged visuals; adds Functions chips)
   function renderApps(el){
     const wrap = document.createElement('div');
